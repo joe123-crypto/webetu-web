@@ -33,16 +33,37 @@ export default function GoogleFinishPage() {
           throw new Error("No authorization code found. Please try signing in again.");
         }
 
-        // Exchange the code server-side via a fetch to a token endpoint.
-        // For this scaffold we simply redirect to sign-in to restart the flow.
-        // A full implementation would POST the code to a server action that
-        // calls Google's token endpoint and returns a Firebase custom token.
-        throw new Error(
-          "Google OAuth code exchange is not yet implemented in this scaffold. " +
-          "Please use the email magic link to sign in."
-        );
+        // Exchange the authorization code for a Google id_token server-side
+        // (the client secret must never reach the browser).
+        const exchange = await fetch("/auth/google/finish/token", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ code }),
+        });
+        const exchangeBody = (await exchange.json().catch(() => ({}))) as {
+          id_token?: string;
+          error?: string;
+        };
+        if (!exchange.ok || !exchangeBody.id_token) {
+          throw new Error(exchangeBody.error || "Could not complete Google sign-in. Please try again.");
+        }
+
+        // Sign the Google credential into the Firebase client SDK, then mint the
+        // server session cookie from the resulting Firebase ID token.
+        const settings = await loadFirebaseClientSettings();
+        const auth = initializeFirebaseClient(settings);
+        const credential = GoogleAuthProvider.credential(exchangeBody.id_token);
+        const result = await signInWithCredential(auth, credential);
+        const firebaseIdToken = await result.user.getIdToken(true);
+        const session = await createAndVerifyServerSession(firebaseIdToken, result.user.uid);
+
+        if (!active) return;
+        setNotice({ kind: "complete", message: "Signed in. Opening your account..." });
+        window.location.assign(destinationForSession(session, next));
       } catch (error) {
         if (!active) return;
+        completingRef.current = false;
         setNotice({ kind: "error", message: authErrorDetails(error).message });
       }
     }
