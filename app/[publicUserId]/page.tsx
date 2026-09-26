@@ -100,7 +100,12 @@ function ReservationTaskCard({ task }: { task: DashboardTaskSnapshot }) {
 
 export default async function UserDashboardPage({ params }: Props) {
   const { publicUserId } = await params;
-  validatePublicUserId(publicUserId);
+
+  try {
+    validatePublicUserId(publicUserId);
+  } catch {
+    notFound();
+  }
 
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
