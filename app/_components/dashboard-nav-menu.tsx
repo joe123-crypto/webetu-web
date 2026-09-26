@@ -27,7 +27,7 @@ const navItems: ReadonlyArray<{
   icon: LucideIcon;
 }> = [
   { key: "overview", label: "Overview", href: "", icon: Home },
-  { key: "meal-reservation", label: "Meal Reservation", href: "/meals", icon: Utensils },
+  { key: "meal-reservation", label: "Meal Reservation", href: "/meal-reservation", icon: Utensils },
   { key: "settings", label: "Settings", href: "/settings", icon: Settings },
 ];
 
