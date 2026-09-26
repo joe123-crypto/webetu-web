@@ -4392,3 +4392,24 @@ button.landing-pricing-button {
     flex: 0 0 32px;
   }
 }
+
+/* Settings section tabs */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 16px 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-tab {
+  padding: 10px 16px;
+  font-weight: var(--font-weight-utility);
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.settings-tab.is-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
