@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyFirebaseIdToken, verifyFirebaseRequest, sessionCookieHeader } from "@/src/security/session";
 import { getFirebaseAdminAuth } from "@/src/firebase/admin";
+import { getOrCreatePublicUserId } from "@/src/domains/users";
 import { SESSION_COOKIE_MAX_AGE_SECONDS } from "@/src/config";
 import { httpError } from "@/src/lib/utils";
 
@@ -37,9 +38,13 @@ export async function POST(req: NextRequest) {
     const expiresIn = SESSION_COOKIE_MAX_AGE_SECONDS * 1000;
     const sessionCookie = await auth.createSessionCookie(body.idToken, { expiresIn });
 
+    stage = "resolve_public_user_id";
+    const publicUserId = await getOrCreatePublicUserId(decoded.uid);
+
     const response = NextResponse.json({
       ok: true,
       uid: decoded.uid,
+      publicUserId,
       isNewUser: false,
       onboardingRequired: false,
     });
