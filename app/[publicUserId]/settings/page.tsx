@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME } from "@/src/config";
 import { verifyFirebaseSessionCookie } from "@/src/security/session";
-import { getWebetuCredentialStatus } from "@/src/domains/webetu";
+import { getWebetuCredentialStatus, getWebetuUsername } from "@/src/domains/webetu";
 import { validatePublicUserId } from "@/src/lib/utils";
 import { DashboardShell } from "@/app/_components/dashboard-shell";
 import { StatusNotice, StatusPill } from "@/app/_components/status-ui";
@@ -41,7 +41,10 @@ export default async function SettingsPage({
   const uid = verified.uid;
   const userLabel = verified.name ?? verified.email ?? "Account";
 
-  const webetuStatus = await getWebetuCredentialStatus(uid).catch(() => null);
+  const [webetuStatus, savedUsername] = await Promise.all([
+    getWebetuCredentialStatus(uid).catch(() => null),
+    getWebetuUsername(uid).catch(() => null),
+  ]);
   const webetuConfigured = !!webetuStatus?.configured;
   const webetuLabel = webetuConfigured
     ? "Saved"
@@ -194,6 +197,7 @@ export default async function SettingsPage({
                 name="username"
                 autoComplete="username"
                 maxLength={120}
+                defaultValue={savedUsername ?? ""}
                 required
               />
             </label>
