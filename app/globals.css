@@ -243,6 +243,33 @@ label {
   width: min(560px, 100%);
 }
 
+.restaurant-list {
+  display: grid;
+  gap: 8px;
+}
+
+.restaurant-option {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.restaurant-option:hover {
+  border-color: var(--accent);
+}
+
+.restaurant-option[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .panel-head,
 .app-header {
   display: flex;
@@ -4412,4 +4439,73 @@ button.landing-pricing-button {
 .settings-tab.is-active {
   color: var(--text-primary);
   border-bottom-color: var(--text-primary);
+}
+
+/* --- Preference toggles (switches) ------------------------------------ */
+.auto-reservation-panel,
+.email-notification-panel {
+  margin-top: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.switch-label {
+  font-weight: var(--font-weight-utility);
+  color: var(--text-primary);
+}
+
+/* Reset the shared button styling for the switch track. */
+.switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46px;
+  min-height: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.switch[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--background);
+  transform: translateY(-50%);
+  transition: left 0.15s ease;
+}
+
+.switch[aria-checked="true"] .switch-thumb {
+  left: 21px;
 }

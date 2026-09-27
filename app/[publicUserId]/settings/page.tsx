@@ -7,6 +7,7 @@ import { getWebetuCredentialStatus } from "@/src/domains/webetu";
 import { validatePublicUserId } from "@/src/lib/utils";
 import { DashboardShell } from "@/app/_components/dashboard-shell";
 import { StatusNotice, StatusPill } from "@/app/_components/status-ui";
+import { EmailNotificationToggle } from "@/app/_components/email-notification-toggle";
 
 export const runtime = "nodejs";
 
@@ -234,6 +235,8 @@ export default async function SettingsPage({
           </form>
           <StatusNotice data-webetu-message />
         </section>
+
+        <EmailNotificationToggle />
       </DashboardShell>
       <script dangerouslySetInnerHTML={{ __html: pageScript }} />
     </>
