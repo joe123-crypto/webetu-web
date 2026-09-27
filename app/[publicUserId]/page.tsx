@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 
 import { DashboardShell } from "@/app/_components/dashboard-shell";
 import { StatusPill, StatusNotice } from "@/app/_components/status-ui";
+import { AutoReservationToggle } from "@/app/_components/auto-reservation-toggle";
 import { SESSION_COOKIE_NAME } from "@/src/config";
 import { listDashboardTasksForUser, type DashboardTaskSnapshot } from "@/src/domains/dashboard";
 import { verifyFirebaseSessionCookie } from "@/src/security/session";
@@ -125,6 +126,8 @@ export default async function UserDashboardPage({ params }: Props) {
       <div className="dashboard-topbar">
         <h1>Reservation Dashboard</h1>
       </div>
+
+      <AutoReservationToggle />
 
       {tasks.length === 0 ? (
         <StatusNotice kind="info" variant="block">
