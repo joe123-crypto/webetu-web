@@ -14,7 +14,7 @@ import {
   webetuRestaurantOverrideId,
   WEBETU_FALLBACK_RESTAURANT,
 } from "@/src/lib/utils";
-import { encryptCentralSecret } from "@/src/security/crypto";
+import { encryptCentralSecret, decryptCentralSecret } from "@/src/security/crypto";
 
 export async function getWebetuCredentialStatus(uid: string) {
   const safeUid = validateFirebaseUid(uid);
@@ -39,6 +39,19 @@ export async function getWebetuCredentialStatus(uid: string) {
     updatedAt: data.updatedAt?.toDate()?.toISOString() ?? null,
     lastVerifiedAt: data.lastVerifiedAt?.toDate()?.toISOString() ?? null,
   };
+}
+
+export async function getWebetuUsername(uid: string): Promise<string | null> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const refId = webetuCredentialRefId(safeUid);
+  const doc = await db.collection("credentialRefs").doc(refId).get();
+  if (!doc.exists) return null;
+  const data = doc.data() || {};
+  if (!data.secret) return null;
+  const creds = decryptCentralSecret(data.secret, refId);
+  const username = creds?.username;
+  return typeof username === "string" && username ? username : null;
 }
 
 export async function saveWebetuCredentials(uid: string, body: any) {
