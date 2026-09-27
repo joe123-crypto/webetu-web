@@ -43,6 +43,8 @@ export default async function MealReservationPage({
   var restaurantList = document.querySelector("[data-restaurant-list]");
   var restaurantStatus = document.querySelector("[data-restaurant-status]");
   var restaurantMessage = document.querySelector("[data-restaurant-message]");
+  var yourRestaurants = document.querySelector("[data-your-restaurants]");
+  var yourRestaurantsMessage = document.querySelector("[data-your-restaurants-message]");
 
   function setMessage(el, message, tone) {
     el.querySelector("[data-status-label]").textContent = message || "";
@@ -58,45 +60,82 @@ export default async function MealReservationPage({
     return body;
   }
 
-  // Restaurant selection
+  var selectedCatalogId = null;
+
+  // Mark the currently-selected restaurant across both lists
+  function highlightSelection() {
+    [restaurantList, yourRestaurants].forEach(function(container) {
+      if (!container) return;
+      container.querySelectorAll("[data-catalog-id]").forEach(function(el) {
+        el.setAttribute("aria-pressed", el.dataset.catalogId === selectedCatalogId ? "true" : "false");
+      });
+    });
+  }
+
+  // Save the chosen restaurant as the user's default and update both lists
+  async function selectRestaurant(r) {
+    if (restaurantStatus) setPill(restaurantStatus, "Saving…", "loading");
+    if (restaurantMessage) setMessage(restaurantMessage, "", "info");
+    if (yourRestaurantsMessage) setMessage(yourRestaurantsMessage, "", "info");
+    try {
+      await readJson(await fetch("/webetu/preferences", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ restaurant: r })
+      }));
+      selectedCatalogId = r.catalogId || null;
+      highlightSelection();
+      if (restaurantStatus) setPill(restaurantStatus, r.name || r.catalogId || "Selected", "complete");
+      if (restaurantMessage) setMessage(restaurantMessage, "Restaurant preference saved.", "complete");
+    } catch (err) {
+      if (restaurantStatus) setPill(restaurantStatus, "Error", "error");
+      if (restaurantMessage) setMessage(restaurantMessage, err.message || "Could not save restaurant preference.", "error");
+    }
+  }
+
+  // Render clickable restaurant options into a container
+  function renderOptions(container, catalog) {
+    if (!container) return;
+    if (!catalog.length) {
+      container.innerHTML = "<p>No restaurants available.</p>";
+      return;
+    }
+    container.innerHTML = "";
+    catalog.forEach(function(r) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "restaurant-option";
+      btn.dataset.catalogId = r.catalogId || "";
+      btn.setAttribute("aria-pressed", "false");
+      btn.textContent = r.name || r.catalogId || "Unknown";
+      btn.addEventListener("click", function() { selectRestaurant(r); });
+      container.appendChild(btn);
+    });
+  }
+
   async function loadRestaurants() {
     if (!restaurantList) return;
     restaurantList.innerHTML = "<p>Loading restaurants…</p>";
     try {
       var data = await readJson(await fetch("/webetu/restaurants", { method: "GET", credentials: "same-origin" }));
       var catalog = data.catalog || [];
-      if (!catalog.length) {
-        restaurantList.innerHTML = "<p>No restaurants available.</p>";
-        return;
-      }
-      restaurantList.innerHTML = "";
-      catalog.forEach(function(r) {
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "restaurant-option";
-        btn.dataset.catalogId = r.catalogId || "";
-        btn.textContent = r.name || r.catalogId || "Unknown";
-        btn.addEventListener("click", async function() {
-          if (restaurantStatus) setPill(restaurantStatus, "Saving…", "loading");
-          if (restaurantMessage) setMessage(restaurantMessage, "", "info");
-          try {
-            await readJson(await fetch("/webetu/preferences", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              credentials: "same-origin",
-              body: JSON.stringify({ restaurant: r })
-            }));
-            if (restaurantStatus) setPill(restaurantStatus, r.name || r.catalogId || "Selected", "complete");
-            if (restaurantMessage) setMessage(restaurantMessage, "Restaurant preference saved.", "complete");
-          } catch (err) {
-            if (restaurantStatus) setPill(restaurantStatus, "Error", "error");
-            if (restaurantMessage) setMessage(restaurantMessage, err.message || "Could not save restaurant preference.", "error");
+      try {
+        var prefs = await readJson(await fetch("/webetu/preferences", { method: "GET", credentials: "same-origin" }));
+        if (prefs && prefs.defaultRestaurant) {
+          selectedCatalogId = prefs.defaultRestaurant.catalogId || null;
+          if (selectedCatalogId && restaurantStatus) {
+            setPill(restaurantStatus, prefs.defaultRestaurant.name || selectedCatalogId, "complete");
           }
-        });
-        restaurantList.appendChild(btn);
-      });
+        }
+      } catch (e) {}
+      renderOptions(restaurantList, catalog);
+      renderOptions(yourRestaurants, catalog);
+      highlightSelection();
     } catch (err) {
       restaurantList.innerHTML = "<p>Could not load restaurants.</p>";
+      if (yourRestaurants) yourRestaurants.innerHTML = "<p>Could not load restaurants.</p>";
+      if (yourRestaurantsMessage) setMessage(yourRestaurantsMessage, err.message || "Could not load restaurants.", "error");
     }
   }
 
@@ -108,7 +147,7 @@ export default async function MealReservationPage({
     <>
       <DashboardShell active="meal-reservation" publicUserId={publicUserId} userLabel={userLabel}>
         <div className="dashboard-topbar">
-          <h1>Meal Reservation</h1>
+          <h1>Select Restaurant</h1>
         </div>
 
         {/* Restaurant selection panel */}
@@ -124,6 +163,20 @@ export default async function MealReservationPage({
             <p>Loading restaurants&hellip;</p>
           </div>
           <StatusNotice data-restaurant-message />
+        </section>
+
+        {/* Your restaurants panel */}
+        <section className="panel panel-narrow" aria-labelledby="your-restaurants-title">
+          <div className="panel-head">
+            <div>
+              <h2 id="your-restaurants-title">Your Restaurants</h2>
+              <p>Restaurants available for your meal reservations.</p>
+            </div>
+          </div>
+          <div data-your-restaurants className="restaurant-list">
+            <p>Loading restaurants&hellip;</p>
+          </div>
+          <StatusNotice data-your-restaurants-message />
         </section>
       </DashboardShell>
       <script dangerouslySetInnerHTML={{ __html: pageScript }} />
