@@ -4441,8 +4441,9 @@ button.landing-pricing-button {
   border-bottom-color: var(--text-primary);
 }
 
-/* --- Automatic Reservation toggle ------------------------------------- */
-.auto-reservation-panel {
+/* --- Preference toggles (switches) ------------------------------------ */
+.auto-reservation-panel,
+.email-notification-panel {
   margin-top: 16px;
   padding: 16px 20px;
   border: 1px solid var(--border);
