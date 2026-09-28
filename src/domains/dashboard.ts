@@ -137,10 +137,63 @@ export async function upsertDashboardTaskStatus(body: Record<string, unknown>) {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  await getFirestoreDb()
+  const docId = dashboardTaskStatusId(userId, taskId);
+  const db = getFirestoreDb();
+
+  await db
     .collection("dashboardTaskStatus")
-    .doc(dashboardTaskStatusId(userId, taskId))
+    .doc(docId)
     .set(payload, { merge: true });
 
+  // Append a run-history entry only when this update represents a completed run.
+  if (lastRunStatus != null && lastRunAt != null) {
+    await db
+      .collection("dashboardTaskStatus")
+      .doc(docId)
+      .collection("runs")
+      .add({
+        status: lastRunStatus,
+        summary: lastRunSummary,
+        runAt: lastRunAt,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+  }
+
   return { ok: true as const, userId, taskId };
+}
+
+export type DashboardTaskRun = {
+  id: string;
+  runAt: string | null;
+  status: DashboardLastRunStatus | null;
+  summary: string | null;
+};
+
+export async function listDashboardTaskRunsForUser(
+  userIdInput: string,
+  taskId: DashboardTaskId,
+  limit = 10,
+): Promise<{ runs: DashboardTaskRun[] }> {
+  const userId = validateFirebaseUid(userIdInput);
+  const snap = await getFirestoreDb()
+    .collection("dashboardTaskStatus")
+    .doc(dashboardTaskStatusId(userId, taskId))
+    .collection("runs")
+    .orderBy("runAt", "desc")
+    .limit(limit)
+    .get();
+
+  const runs = snap.docs.map((doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    return {
+      id: doc.id,
+      runAt: dateToIso(data.runAt),
+      status: lastRunStatuses.has(String(data.status ?? ""))
+        ? (data.status as DashboardLastRunStatus)
+        : null,
+      summary: typeof data.summary === "string" ? data.summary : null,
+    };
+  });
+
+  return { runs };
 }

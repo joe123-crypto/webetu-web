@@ -11,7 +11,13 @@ import { DashboardShell } from "@/app/_components/dashboard-shell";
 import { StatusPill, StatusNotice } from "@/app/_components/status-ui";
 import { AutoReservationToggle } from "@/app/_components/auto-reservation-toggle";
 import { SESSION_COOKIE_NAME } from "@/src/config";
-import { listDashboardTasksForUser, type DashboardTaskSnapshot } from "@/src/domains/dashboard";
+import {
+  listDashboardTasksForUser,
+  listDashboardTaskRunsForUser,
+  type DashboardTaskSnapshot,
+  type DashboardTaskRun,
+  type DashboardLastRunStatus,
+} from "@/src/domains/dashboard";
 import { verifyFirebaseSessionCookie } from "@/src/security/session";
 import { validatePublicUserId } from "@/src/lib/utils";
 
@@ -45,7 +51,7 @@ function statusLabel(task: DashboardTaskSnapshot) {
   return map[task.status] ?? task.status;
 }
 
-function lastRunLabel(task: DashboardTaskSnapshot) {
+function runResultLabel(status: DashboardLastRunStatus | null): string {
   const map: Record<string, string> = {
     success: "Success",
     partial: "Partial",
@@ -53,7 +59,11 @@ function lastRunLabel(task: DashboardTaskSnapshot) {
     skipped: "Skipped",
     action_required: "Action required",
   };
-  return task.lastRunStatus ? (map[task.lastRunStatus] ?? task.lastRunStatus) : "—";
+  return status ? (map[status] ?? status) : "—";
+}
+
+function lastRunLabel(task: DashboardTaskSnapshot) {
+  return runResultLabel(task.lastRunStatus);
 }
 
 function formatDate(iso: string | null) {
@@ -65,7 +75,7 @@ function formatDate(iso: string | null) {
   });
 }
 
-function ReservationTaskCard({ task }: { task: DashboardTaskSnapshot }) {
+function ReservationTaskCard({ task, runs }: { task: DashboardTaskSnapshot; runs: DashboardTaskRun[] }) {
   return (
     <div className="status block" data-status-kind={statusKindForTask(task)} style={{ marginBottom: "12px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -95,6 +105,33 @@ function ReservationTaskCard({ task }: { task: DashboardTaskSnapshot }) {
       {task.lastRunSummary && (
         <p style={{ margin: "8px 0 0", fontSize: "0.875rem", color: "#374151" }}>{task.lastRunSummary}</p>
       )}
+      {runs.length > 0 && (
+        <details style={{ marginTop: "8px", fontSize: "0.8125rem" }}>
+          <summary style={{ cursor: "pointer", color: "#6b7280" }}>
+            View run history ({runs.length})
+          </summary>
+          <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none" }}>
+            {runs.map((run) => (
+              <li
+                key={run.id}
+                style={{
+                  padding: "6px 0",
+                  borderTop: "1px solid #e5e7eb",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                }}
+              >
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <span style={{ color: "#374151" }}>{formatDate(run.runAt)}</span>
+                  <span style={{ color: "#6b7280" }}>{runResultLabel(run.status)}</span>
+                </div>
+                {run.summary && <span style={{ color: "#6b7280" }}>{run.summary}</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
@@ -119,6 +156,14 @@ export default async function UserDashboardPage({ params }: Props) {
 
   const { tasks } = await listDashboardTasksForUser(uid).catch(() => ({ tasks: [] }));
 
+  const runsByTask: Record<string, DashboardTaskRun[]> = {};
+  await Promise.all(
+    tasks.map(async (t) => {
+      const { runs } = await listDashboardTaskRunsForUser(uid, t.taskId).catch(() => ({ runs: [] }));
+      runsByTask[t.taskId] = runs;
+    }),
+  );
+
   const userLabel = verified.name ?? verified.email ?? "Account";
 
   return (
@@ -136,7 +181,7 @@ export default async function UserDashboardPage({ params }: Props) {
       ) : (
         <div style={{ marginTop: "16px" }}>
           {tasks.map((task) => (
-            <ReservationTaskCard key={task.taskId} task={task} />
+            <ReservationTaskCard key={task.taskId} task={task} runs={runsByTask[task.taskId] ?? []} />
           ))}
         </div>
       )}
