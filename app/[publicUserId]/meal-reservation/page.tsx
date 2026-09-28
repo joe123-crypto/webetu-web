@@ -6,6 +6,7 @@ import { verifyFirebaseSessionCookie } from "@/src/security/session";
 import { validatePublicUserId } from "@/src/lib/utils";
 import { DashboardShell } from "@/app/_components/dashboard-shell";
 import { StatusNotice, StatusPill } from "@/app/_components/status-ui";
+import { InfoHint } from "@/app/_components/info-hint";
 
 export const runtime = "nodejs";
 
@@ -173,8 +174,12 @@ export default async function MealReservationPage({
         <section className="panel panel-narrow" aria-labelledby="restaurant-title">
           <div className="panel-head">
             <div>
-              <h2 id="restaurant-title">Default Restaurant</h2>
-              <p>Choose the restaurant for your daily meal reservations.</p>
+              <h2 id="restaurant-title" className="panel-title">
+                Default Restaurant
+                <InfoHint label="Default Restaurant">
+                  Choose the restaurant for your daily meal reservations.
+                </InfoHint>
+              </h2>
             </div>
             <StatusPill data-restaurant-status kind="pending">Not set</StatusPill>
           </div>
@@ -188,8 +193,12 @@ export default async function MealReservationPage({
         <section className="panel panel-narrow" aria-labelledby="your-restaurants-title">
           <div className="panel-head">
             <div>
-              <h2 id="your-restaurants-title">Your Restaurants</h2>
-              <p>Restaurants available for your meal reservations.</p>
+              <h2 id="your-restaurants-title" className="panel-title">
+                Your Restaurants
+                <InfoHint label="Your Restaurants">
+                  Restaurants available for your meal reservations.
+                </InfoHint>
+              </h2>
             </div>
           </div>
           <div data-your-restaurants className="restaurant-list">
