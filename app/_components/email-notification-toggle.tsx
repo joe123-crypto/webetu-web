@@ -14,7 +14,7 @@ async function readJson(response: Response) {
 }
 
 export function EmailNotificationToggle() {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const labelId = useId();
