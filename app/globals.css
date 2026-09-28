@@ -290,9 +290,14 @@ label {
   gap: 8px;
 }
 
+/* The section header is the positioning context for the info popover, so the
+   popover spans the header width instead of overflowing from the icon. */
+.panel-head {
+  position: relative;
+}
+
 /* Inline "more info" affordance: a small icon that reveals an explanation. */
 .info-hint {
-  position: relative;
   display: inline-flex;
   align-items: center;
   line-height: 0;
@@ -333,9 +338,10 @@ label {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
+  right: auto;
   z-index: 20;
   width: max-content;
-  max-width: min(280px, 78vw);
+  max-width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
