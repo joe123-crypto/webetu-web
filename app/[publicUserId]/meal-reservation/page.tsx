@@ -114,29 +114,48 @@ export default async function MealReservationPage({
     });
   }
 
-  async function loadRestaurants() {
+  // Reflect the saved default into the status pill and selection highlight
+  async function loadPreferences() {
+    try {
+      var prefs = await readJson(await fetch("/webetu/preferences", { method: "GET", credentials: "same-origin" }));
+      if (prefs && prefs.defaultRestaurant) {
+        selectedCatalogId = prefs.defaultRestaurant.catalogId || null;
+        if (selectedCatalogId && restaurantStatus) {
+          setPill(restaurantStatus, prefs.defaultRestaurant.name || selectedCatalogId, "complete");
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Default Restaurant panel: the static restaurant catalog
+  async function loadDefaultRestaurants() {
     if (!restaurantList) return;
     restaurantList.innerHTML = "<p>Loading restaurants…</p>";
     try {
       var data = await readJson(await fetch("/webetu/restaurants", { method: "GET", credentials: "same-origin" }));
-      var catalog = data.catalog || [];
-      try {
-        var prefs = await readJson(await fetch("/webetu/preferences", { method: "GET", credentials: "same-origin" }));
-        if (prefs && prefs.defaultRestaurant) {
-          selectedCatalogId = prefs.defaultRestaurant.catalogId || null;
-          if (selectedCatalogId && restaurantStatus) {
-            setPill(restaurantStatus, prefs.defaultRestaurant.name || selectedCatalogId, "complete");
-          }
-        }
-      } catch (e) {}
-      renderOptions(restaurantList, catalog);
-      renderOptions(yourRestaurants, catalog);
-      highlightSelection();
+      renderOptions(restaurantList, data.catalog || []);
     } catch (err) {
       restaurantList.innerHTML = "<p>Could not load restaurants.</p>";
-      if (yourRestaurants) yourRestaurants.innerHTML = "<p>Could not load restaurants.</p>";
+    }
+  }
+
+  // Your Restaurants panel: the user's live ONOU restaurants (falls back to catalog server-side)
+  async function loadYourRestaurants() {
+    if (!yourRestaurants) return;
+    yourRestaurants.innerHTML = "<p>Loading restaurants…</p>";
+    try {
+      var data = await readJson(await fetch("/webetu/restaurants/live", { method: "GET", credentials: "same-origin" }));
+      renderOptions(yourRestaurants, data.restaurants || []);
+    } catch (err) {
+      yourRestaurants.innerHTML = "<p>Could not load restaurants.</p>";
       if (yourRestaurantsMessage) setMessage(yourRestaurantsMessage, err.message || "Could not load restaurants.", "error");
     }
+  }
+
+  async function loadRestaurants() {
+    await loadPreferences();
+    await Promise.all([loadDefaultRestaurants(), loadYourRestaurants()]);
+    highlightSelection();
   }
 
   loadRestaurants();
