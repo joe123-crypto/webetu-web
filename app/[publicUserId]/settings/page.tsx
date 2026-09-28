@@ -8,6 +8,7 @@ import { validatePublicUserId } from "@/src/lib/utils";
 import { DashboardShell } from "@/app/_components/dashboard-shell";
 import { StatusNotice, StatusPill } from "@/app/_components/status-ui";
 import { EmailNotificationToggle } from "@/app/_components/email-notification-toggle";
+import { InfoHint } from "@/app/_components/info-hint";
 
 export const runtime = "nodejs";
 
@@ -184,8 +185,12 @@ export default async function SettingsPage({
         <section className="panel panel-narrow dashboard-form-panel" aria-labelledby="cred-title">
           <div className="panel-head">
             <div>
-              <h2 id="cred-title">Webetu Account</h2>
-              <p>Save the Webetu credentials used for automatic meal reservations.</p>
+              <h2 id="cred-title" className="panel-title">
+                Webetu Account
+                <InfoHint label="Webetu Account">
+                  Save the Webetu credentials used for automatic meal reservations.
+                </InfoHint>
+              </h2>
             </div>
             <StatusPill data-webetu-status kind={webetuKind}>{webetuLabel}</StatusPill>
           </div>
