@@ -58,6 +58,7 @@ export const config = {
   firebaseEmailLinkUrl: process.env.FIREBASE_EMAIL_LINK_URL ?? `${publicBaseUrl}/auth/firebase/finish`,
   firebaseServiceAccountJsonBase64: process.env.FIREBASE_SERVICE_ACCOUNT_JSON_BASE64 ?? "",
   internalApiKey: process.env.WEBETU_INTERNAL_API_KEY ?? "",
+  webetuApiBaseUrl: (process.env.WEBETU_API_BASE_URL ?? "").trim().replace(/\/+$/, ""),
   centralDataEncryptionSecret: process.env.CENTRAL_DATA_ENCRYPTION_SECRET ?? process.env.TOKEN_ENCRYPTION_SECRET ?? "",
   centralDataKeyVersion: process.env.CENTRAL_DATA_KEY_VERSION ?? "v1",
   resendApiKey: process.env.RESEND_API_KEY ?? "",

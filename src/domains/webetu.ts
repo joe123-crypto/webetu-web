@@ -174,6 +174,72 @@ export async function setWebetuDefaultRestaurantForUid(uid: string, restaurantIn
   return webetuPreferencesFromData(doc.data());
 }
 
+export async function getWebetuAutoReservationForUid(uid: string): Promise<{ enabled: boolean }> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const doc = await db.collection("webetuPreferences").doc(safeUid).get();
+  return { enabled: doc.data()?.autoReservationEnabled === true };
+}
+
+export async function setWebetuAutoReservationForUid(
+  uid: string,
+  enabledInput: unknown
+): Promise<{ enabled: boolean }> {
+  const safeUid = validateFirebaseUid(uid);
+  const enabled = enabledInput === true;
+  const db = getFirestoreDb();
+  const prefRef = db.collection("webetuPreferences").doc(safeUid);
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(prefRef);
+    if (doc.exists) {
+      t.update(prefRef, {
+        autoReservationEnabled: enabled,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      t.set(prefRef, {
+        userId: safeUid,
+        autoReservationEnabled: enabled,
+        overrides: {},
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
+  return { enabled };
+}
+
+// Roster for the backend cron: active-credential ("connected") users plus their
+// auto-reservation flag and public default-restaurant name. Never leaks secrets.
+export async function listWebetuReservationRoster() {
+  const db = getFirestoreDb();
+  const snap = await db
+    .collection("credentialRefs")
+    .where("service", "==", "webetu")
+    .where("status", "==", "active")
+    .get();
+
+  const users = await Promise.all(
+    snap.docs.map(async (doc) => {
+      const userId = doc.data()?.userId as string | undefined;
+      if (!userId) return null;
+      const prefDoc = await db.collection("webetuPreferences").doc(userId).get();
+      const prefData = prefDoc.data();
+      const restaurant =
+        publicRestaurantFields(prefData?.defaultRestaurant) ??
+        publicRestaurantFields(WEBETU_FALLBACK_RESTAURANT);
+      return {
+        userId,
+        enabled: prefData?.autoReservationEnabled === true,
+        restaurant: { name: restaurant?.name ?? WEBETU_FALLBACK_RESTAURANT.name },
+      };
+    })
+  );
+
+  const filtered = users.filter((u): u is NonNullable<typeof u> => u !== null);
+  return { ok: true as const, count: filtered.length, users: filtered };
+}
+
 export async function setWebetuRestaurantOverrideForUid(uid: string, body: any) {
   const safeUid = validateFirebaseUid(uid);
   const date = normalizeRestaurantDate(body.date);
