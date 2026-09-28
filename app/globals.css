@@ -699,6 +699,21 @@ textarea:focus-visible {
     0 14px 32px rgb(9 9 9 / 4%);
 }
 
+/* Reservation task card: reuses .status for its chrome but stacks its several
+   block children vertically instead of laying them out as a non-wrapping row
+   (which overflowed the viewport on mobile). */
+.status.block {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-height: 0;
+  padding: 20px 22px;
+}
+
+.status.block > * {
+  min-width: 0;
+}
+
 .status > .status-icon-set {
   width: 48px;
   height: 48px;
@@ -1189,6 +1204,7 @@ button.password-toggle {
   align-content: start;
   gap: 24px;
   width: 100%;
+  min-width: 0;
   max-width: 1480px;
   margin: 0 auto;
   padding: 30px 36px 60px;
@@ -2091,6 +2107,7 @@ button.password-toggle {
   align-content: start;
   gap: 24px;
   width: 100%;
+  min-width: 0;
   max-width: 1480px;
   margin: 0 auto;
   padding: 30px 36px 60px;
