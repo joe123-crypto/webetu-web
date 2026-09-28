@@ -328,6 +328,29 @@ label {
   outline-offset: 2px;
 }
 
+/* Draws the eye to a tip the user hasn't opened yet; stops once clicked. */
+@keyframes info-hint-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+}
+
+.info-hint-trigger.is-attention {
+  color: var(--accent);
+  background: var(--accent-soft);
+  animation: info-hint-pulse 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-hint-trigger.is-attention {
+    animation: none;
+  }
+}
+
 .info-hint-trigger svg {
   width: 16px;
   height: 16px;
@@ -4537,6 +4560,8 @@ button.landing-pricing-button {
 /* --- Preference toggles (switches) ------------------------------------ */
 .auto-reservation-panel,
 .email-notification-panel {
+  /* Positioning context so the tip popover stays within the panel. */
+  position: relative;
   margin-top: 16px;
   padding: 16px 20px;
   border: 1px solid var(--border);
@@ -4553,6 +4578,9 @@ button.landing-pricing-button {
 }
 
 .switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: var(--font-weight-utility);
   color: var(--text-primary);
 }

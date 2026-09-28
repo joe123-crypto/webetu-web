@@ -1,9 +1,9 @@
 import { config } from "@/src/config";
 import { getFirebaseAdminAuth } from "@/src/firebase/admin";
+import { getWebetuEmailNotificationForUid } from "@/src/domains/webetu";
 
 // Resend REST API — no npm dependency, plain fetch.
 const RESEND_API_URL = "https://api.resend.com/emails";
-const FROM_ADDRESS = "Webetu <no-reply@webetu.app>";
 
 type SendEmailParams = {
   to: string;
@@ -24,7 +24,7 @@ async function sendEmail({ to, subject, html }: SendEmailParams): Promise<void> 
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: FROM_ADDRESS, to, subject, html }),
+    body: JSON.stringify({ from: config.emailFrom, to, subject, html }),
   });
 
   if (!res.ok) {
@@ -81,6 +81,12 @@ export async function sendReservationResultEmail({
     const apiKey = config.resendApiKey || process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.log("[email] RESEND_API_KEY is not set — skipping reservation result email.");
+      return;
+    }
+
+    const { enabled } = await getWebetuEmailNotificationForUid(userId);
+    if (!enabled) {
+      console.log(`[email] User ${userId} disabled email notifications — skipping.`);
       return;
     }
 

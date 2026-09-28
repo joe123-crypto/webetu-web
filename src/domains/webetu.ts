@@ -209,6 +209,44 @@ export async function setWebetuAutoReservationForUid(
   return { enabled };
 }
 
+export async function getWebetuEmailNotificationForUid(
+  uid: string
+): Promise<{ enabled: boolean }> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const doc = await db.collection("webetuPreferences").doc(safeUid).get();
+  // Opt-out default: absent field means notifications are ON.
+  return { enabled: doc.data()?.emailNotificationEnabled !== false };
+}
+
+export async function setWebetuEmailNotificationForUid(
+  uid: string,
+  enabledInput: unknown
+): Promise<{ enabled: boolean }> {
+  const safeUid = validateFirebaseUid(uid);
+  const enabled = enabledInput === true;
+  const db = getFirestoreDb();
+  const prefRef = db.collection("webetuPreferences").doc(safeUid);
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(prefRef);
+    if (doc.exists) {
+      t.update(prefRef, {
+        emailNotificationEnabled: enabled,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      t.set(prefRef, {
+        userId: safeUid,
+        emailNotificationEnabled: enabled,
+        overrides: {},
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
+  return { enabled };
+}
+
 // Roster for the backend cron: active-credential ("connected") users plus their
 // auto-reservation flag and public default-restaurant name. Never leaks secrets.
 export async function listWebetuReservationRoster() {
