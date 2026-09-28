@@ -1752,7 +1752,7 @@ button.password-toggle {
 
 @media (max-width: 520px) {
   .dashboard-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .dashboard-nav-link {
@@ -2660,7 +2660,7 @@ button.password-toggle {
 
 @media (max-width: 520px) {
   .dashboard-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .dashboard-nav-link {
