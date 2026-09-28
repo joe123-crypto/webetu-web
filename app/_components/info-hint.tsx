@@ -11,6 +11,11 @@ type InfoHintProps = {
    * Falls back to a generic label when omitted.
    */
   label?: string;
+  /**
+   * When true, the icon pulses to draw attention until the user interacts with
+   * it once. The pulse stops permanently after the first click.
+   */
+  attention?: boolean;
 };
 
 /**
@@ -18,11 +23,16 @@ type InfoHintProps = {
  * reveals the explanation in a popover so the surrounding interface stays
  * uncluttered. Closes on outside click or Escape.
  */
-export function InfoHint({ children, label }: InfoHintProps) {
+export function InfoHint({ children, label, attention = false }: InfoHintProps) {
   const [open, setOpen] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
   const containerRef = useRef<HTMLSpanElement>(null);
   const popoverId = useId();
   const triggerLabel = label ? `More information about ${label}` : "More information";
+  const triggerClassName =
+    attention && !hasInteracted
+      ? "info-hint-trigger is-attention"
+      : "info-hint-trigger";
 
   useEffect(() => {
     if (!open) return;
@@ -48,11 +58,14 @@ export function InfoHint({ children, label }: InfoHintProps) {
     <span className="info-hint" ref={containerRef}>
       <button
         type="button"
-        className="info-hint-trigger"
+        className={triggerClassName}
         aria-label={triggerLabel}
         aria-expanded={open}
         aria-controls={popoverId}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          setHasInteracted(true);
+          setOpen((value) => !value);
+        }}
       >
         <Info aria-hidden="true" />
       </button>

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { StatusNotice } from "@/app/_components/status-ui";
+import { InfoHint } from "@/app/_components/info-hint";
 
 const ENDPOINT = "/webetu/preferences/email-notifications";
 
@@ -70,8 +71,13 @@ export function EmailNotificationToggle() {
       aria-labelledby={labelId}
     >
       <div className="switch-row">
-        <span id={labelId} className="switch-label">
-          Email notification
+        <span className="switch-label">
+          <span id={labelId}>Email notification</span>
+          <InfoHint label="Email notification" attention>
+            If you can&apos;t find the email, try searching in the spam folder.
+            Once you find it, you should report the email as{" "}
+            <strong>not spam</strong> so that next time you get a notification.
+          </InfoHint>
         </span>
         <button
           type="button"
