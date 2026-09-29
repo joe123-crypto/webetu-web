@@ -137,10 +137,70 @@ export async function upsertDashboardTaskStatus(body: Record<string, unknown>) {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  await getFirestoreDb()
-    .collection("dashboardTaskStatus")
-    .doc(dashboardTaskStatusId(userId, taskId))
-    .set(payload, { merge: true });
+  const docId = dashboardTaskStatusId(userId, taskId);
+  const db = getFirestoreDb();
+  const docRef = db.collection("dashboardTaskStatus").doc(docId);
+
+  // Decide whether this update represents a NEW run result before we overwrite
+  // the snapshot. A run is any update carrying a `lastRunStatus`; `lastRunAt` is
+  // often absent, so we don't require it. De-dup against the stored snapshot so a
+  // worker re-posting identical status (heartbeat/config update) doesn't add a
+  // duplicate history entry.
+  const existing = (await docRef.get()).data();
+  const isNewRun =
+    lastRunStatus != null &&
+    (dateToIso(existing?.lastRunAt) !== (lastRunAt ? lastRunAt.toISOString() : null) ||
+      (existing?.lastRunStatus ?? null) !== lastRunStatus ||
+      (existing?.lastRunSummary ?? null) !== lastRunSummary);
+
+  await docRef.set(payload, { merge: true });
+
+  if (isNewRun) {
+    await docRef.collection("runs").add({
+      status: lastRunStatus,
+      summary: lastRunSummary,
+      runAt: lastRunAt, // may be null
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  }
 
   return { ok: true as const, userId, taskId };
+}
+
+export type DashboardTaskRun = {
+  id: string;
+  runAt: string | null;
+  createdAt: string | null;
+  status: DashboardLastRunStatus | null;
+  summary: string | null;
+};
+
+export async function listDashboardTaskRunsForUser(
+  userIdInput: string,
+  taskId: DashboardTaskId,
+  limit = 10,
+): Promise<{ runs: DashboardTaskRun[] }> {
+  const userId = validateFirebaseUid(userIdInput);
+  const snap = await getFirestoreDb()
+    .collection("dashboardTaskStatus")
+    .doc(dashboardTaskStatusId(userId, taskId))
+    .collection("runs")
+    .orderBy("createdAt", "desc")
+    .limit(limit)
+    .get();
+
+  const runs = snap.docs.map((doc) => {
+    const data = doc.data() as Record<string, unknown>;
+    return {
+      id: doc.id,
+      runAt: dateToIso(data.runAt),
+      createdAt: dateToIso(data.createdAt),
+      status: lastRunStatuses.has(String(data.status ?? ""))
+        ? (data.status as DashboardLastRunStatus)
+        : null,
+      summary: typeof data.summary === "string" ? data.summary : null,
+    };
+  });
+
+  return { runs };
 }
