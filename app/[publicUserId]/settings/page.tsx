@@ -175,19 +175,13 @@ export default async function SettingsPage({
           <h1>Settings</h1>
         </div>
 
-        <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-          <span className="settings-tab is-active" role="tab" aria-selected="true">
-            Credentials Vault
-          </span>
-        </div>
-
         {/* Credentials Vault */}
         <section className="panel panel-narrow dashboard-form-panel" aria-labelledby="cred-title">
           <div className="panel-head">
             <div>
               <h2 id="cred-title" className="panel-title">
-                Webetu Account
-                <InfoHint label="Webetu Account">
+                Credentials Vault
+                <InfoHint label="Credentials Vault">
                   Save the Webetu credentials used for automatic meal reservations.
                 </InfoHint>
               </h2>
