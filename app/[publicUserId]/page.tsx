@@ -19,6 +19,7 @@ import {
   type DashboardLastRunStatus,
 } from "@/src/domains/dashboard";
 import { verifyFirebaseSessionCookie } from "@/src/security/session";
+import { isOnboardingRequired } from "@/src/domains/users";
 import { validatePublicUserId } from "@/src/lib/utils";
 
 export const runtime = "nodejs";
@@ -153,6 +154,8 @@ export default async function UserDashboardPage({ params }: Props) {
   if (!verified) redirect(`/login?next=/${publicUserId}`);
 
   const uid = verified.uid;
+
+  if (await isOnboardingRequired(uid)) redirect(`/${publicUserId}/onboarding`);
 
   const { tasks } = await listDashboardTasksForUser(uid).catch(() => ({ tasks: [] }));
 
