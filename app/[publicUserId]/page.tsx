@@ -155,7 +155,7 @@ export default async function UserDashboardPage({ params }: Props) {
 
   const uid = verified.uid;
 
-  if (await isOnboardingRequired(uid)) redirect(`/${publicUserId}/onboarding`);
+  if (await isOnboardingRequired(uid).catch(() => false)) redirect(`/${publicUserId}/onboarding`);
 
   const { tasks } = await listDashboardTasksForUser(uid).catch(() => ({ tasks: [] }));
 

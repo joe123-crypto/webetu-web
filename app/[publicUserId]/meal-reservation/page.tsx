@@ -40,7 +40,7 @@ export default async function MealReservationPage({
   const uid = verified.uid;
   const userLabel = verified.name ?? verified.email ?? "Account";
 
-  if (await isOnboardingRequired(uid)) redirect(`/${publicUserId}/onboarding`);
+  if (await isOnboardingRequired(uid).catch(() => false)) redirect(`/${publicUserId}/onboarding`);
 
   return (
     <DashboardShell active="meal-reservation" publicUserId={publicUserId} userLabel={userLabel}>

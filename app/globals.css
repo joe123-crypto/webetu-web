@@ -576,10 +576,61 @@ textarea:focus-visible {
   padding: 40px 24px 80px;
 }
 
+.onboarding-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .onboarding-brand-block {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.onboarding-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.onboarding-account-label {
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.onboarding-sign-out {
+  min-height: 36px;
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  padding: 0 12px;
+}
+
+button.onboarding-sign-out:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.onboarding-sign-out svg {
+  width: 16px;
+  height: 16px;
+}
+
+.onboarding-account-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.875rem;
+  text-align: right;
 }
 
 .onboarding-layout {
@@ -711,28 +762,41 @@ textarea:focus-visible {
   color: var(--text-primary);
 }
 
+/* Shared by the <a> (Next) and <button> (disabled Next, Finish) variants. */
 .onboarding-guide-next {
   display: inline-flex;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--onboarding-accent);
   border-radius: var(--radius);
   background: var(--onboarding-accent);
   color: var(--text-inverse);
-  padding: 10px 18px;
+  padding: 0 18px;
+  font-size: 1rem;
   font-weight: var(--font-weight-action);
   text-decoration: none;
   cursor: pointer;
 }
 
-.onboarding-guide-next:hover {
+.onboarding-guide-next:hover:not(:disabled) {
   background: var(--onboarding-accent-strong);
   border-color: var(--onboarding-accent-strong);
 }
 
 .onboarding-guide-next:disabled {
-  opacity: 0.6;
-  cursor: default;
+  border-color: var(--onboarding-accent-border);
+  background: var(--onboarding-accent-border);
+  color: var(--onboarding-accent-strong);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.onboarding-guide-pending {
+  margin: -4px 0 0;
+  color: var(--onboarding-accent-strong);
+  font-size: 0.875rem;
+  text-align: right;
 }
 
 .onboarding-step-body {

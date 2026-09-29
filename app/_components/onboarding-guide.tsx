@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Settings, Utensils, Home } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import {
+  CREDENTIALS_STATUS_EVENT,
+  ONBOARDING_TOTAL_STEPS,
+  RESTAURANT_SELECTED_EVENT,
+} from "@/src/lib/onboarding";
 
 type OnboardingStep = {
   label: string;
   hint: string;
+  // Shown under a disabled Next button until the step's task is done.
+  pending?: string;
   icon: LucideIcon;
 };
 
@@ -14,11 +21,13 @@ const STEPS: ReadonlyArray<OnboardingStep> = [
   {
     label: "Settings",
     hint: "Save your Webetu username and password so we can reserve meals for you automatically.",
+    pending: "Save your credentials to continue.",
     icon: Settings,
   },
   {
     label: "Restaurants",
     hint: "Choose the default restaurant for your daily meal reservations.",
+    pending: "Select a restaurant to continue.",
     icon: Utensils,
   },
   {
@@ -28,23 +37,50 @@ const STEPS: ReadonlyArray<OnboardingStep> = [
   },
 ];
 
+if (STEPS.length !== ONBOARDING_TOTAL_STEPS) {
+  throw new Error("Onboarding guide steps are out of sync with ONBOARDING_TOTAL_STEPS.");
+}
+
 type OnboardingGuideProps = {
   step: number;
   publicUserId: string;
+  // Whether the current step's task was already done when the page rendered.
+  ready: boolean;
 };
 
-export function OnboardingGuide({ step, publicUserId }: OnboardingGuideProps) {
+export function OnboardingGuide({ step, publicUserId, ready: initialReady }: OnboardingGuideProps) {
   const total = STEPS.length;
   const current = Math.min(Math.max(1, step), total);
   const currentStep = STEPS[current - 1];
   const isLast = current >= total;
   const progress = `${(current / total) * 100}%`;
 
+  const [ready, setReady] = useState(initialReady);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const stepHref = (target: number) =>
-    `/${publicUserId}/onboarding?step=${target}`;
+  // The reusable credentials/restaurant UIs announce progress as DOM events.
+  useEffect(() => {
+    function handleCredentials(event: Event) {
+      const detail = (event as CustomEvent<{ configured?: boolean }>).detail;
+      setReady(!!detail?.configured);
+    }
+    function handleRestaurant() {
+      setReady(true);
+    }
+
+    if (current === 1) {
+      document.addEventListener(CREDENTIALS_STATUS_EVENT, handleCredentials);
+      return () => document.removeEventListener(CREDENTIALS_STATUS_EVENT, handleCredentials);
+    }
+    if (current === 2) {
+      document.addEventListener(RESTAURANT_SELECTED_EVENT, handleRestaurant);
+      return () => document.removeEventListener(RESTAURANT_SELECTED_EVENT, handleRestaurant);
+    }
+    return undefined;
+  }, [current]);
+
+  const stepHref = (target: number) => `/${publicUserId}/onboarding?step=${target}`;
 
   async function handleFinish() {
     setBusy(true);
@@ -76,6 +112,7 @@ export function OnboardingGuide({ step, publicUserId }: OnboardingGuideProps) {
       <div
         className="progress-track onboarding-guide-track"
         role="progressbar"
+        aria-label="Onboarding progress"
         aria-valuemin={1}
         aria-valuemax={total}
         aria-valuenow={current}
@@ -90,7 +127,11 @@ export function OnboardingGuide({ step, publicUserId }: OnboardingGuideProps) {
             position < current ? "is-done" : position === current ? "is-current" : "is-upcoming";
           const Icon = position < current ? Check : item.icon;
           return (
-            <li key={item.label} className={`onboarding-guide-step ${state}`} aria-current={position === current ? "step" : undefined}>
+            <li
+              key={item.label}
+              className={`onboarding-guide-step ${state}`}
+              aria-current={position === current ? "step" : undefined}
+            >
               <span className="onboarding-guide-step-badge" aria-hidden="true">
                 <Icon />
               </span>
@@ -100,7 +141,7 @@ export function OnboardingGuide({ step, publicUserId }: OnboardingGuideProps) {
         })}
       </ol>
 
-      <h2 className="onboarding-guide-title">{currentStep.label}</h2>
+      <h1 className="onboarding-guide-title">{currentStep.label}</h1>
       <p className="onboarding-guide-hint">{currentStep.hint}</p>
 
       {error ? (
@@ -118,20 +159,25 @@ export function OnboardingGuide({ step, publicUserId }: OnboardingGuideProps) {
           <span />
         )}
         {isLast ? (
-          <button
-            className="onboarding-guide-next"
-            type="button"
-            onClick={handleFinish}
-            disabled={busy}
-          >
+          <button className="onboarding-guide-next" type="button" onClick={handleFinish} disabled={busy}>
             {busy ? "Finishing…" : "Finish & go to dashboard"}
           </button>
-        ) : (
+        ) : ready ? (
           <a className="onboarding-guide-next" href={stepHref(current + 1)}>
             Next
           </a>
+        ) : (
+          <button className="onboarding-guide-next" type="button" disabled aria-describedby="onboarding-guide-pending">
+            Next
+          </button>
         )}
       </div>
+
+      {!isLast && !ready && currentStep.pending ? (
+        <p id="onboarding-guide-pending" className="onboarding-guide-pending">
+          {currentStep.pending}
+        </p>
+      ) : null}
     </aside>
   );
 }

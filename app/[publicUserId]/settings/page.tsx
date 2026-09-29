@@ -9,7 +9,6 @@ import { validatePublicUserId } from "@/src/lib/utils";
 import { DashboardShell } from "@/app/_components/dashboard-shell";
 import { EmailNotificationToggle } from "@/app/_components/email-notification-toggle";
 import { CredentialsVault } from "@/app/_components/credentials-vault";
-import type { StatusKind } from "@/app/_components/status-ui";
 
 export const runtime = "nodejs";
 
@@ -43,28 +42,12 @@ export default async function SettingsPage({
   const uid = verified.uid;
   const userLabel = verified.name ?? verified.email ?? "Account";
 
-  if (await isOnboardingRequired(uid)) redirect(`/${publicUserId}/onboarding`);
+  if (await isOnboardingRequired(uid).catch(() => false)) redirect(`/${publicUserId}/onboarding`);
 
   const [webetuStatus, savedUsername] = await Promise.all([
     getWebetuCredentialStatus(uid).catch(() => null),
     getWebetuUsername(uid).catch(() => null),
   ]);
-  const webetuConfigured = !!webetuStatus?.configured;
-  const webetuLabel = webetuConfigured
-    ? "Saved"
-    : webetuStatus?.status === "revoked"
-    ? "Revoked"
-    : webetuStatus
-    ? "Not saved"
-    : "Unavailable";
-  const webetuKind: StatusKind = webetuConfigured
-    ? "complete"
-    : webetuStatus?.status === "revoked"
-    ? "revoked"
-    : webetuStatus
-    ? "pending"
-    : "error";
-  const webetuSaveLabel = webetuConfigured ? "Update credentials" : "Save credentials";
 
   return (
     <DashboardShell active="settings" publicUserId={publicUserId} userLabel={userLabel}>
@@ -72,13 +55,7 @@ export default async function SettingsPage({
         <h1>Settings</h1>
       </div>
 
-      <CredentialsVault
-        savedUsername={savedUsername}
-        webetuLabel={webetuLabel}
-        webetuKind={webetuKind}
-        webetuSaveLabel={webetuSaveLabel}
-        webetuConfigured={webetuConfigured}
-      />
+      <CredentialsVault status={webetuStatus} savedUsername={savedUsername} />
 
       <EmailNotificationToggle />
     </DashboardShell>

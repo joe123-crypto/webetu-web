@@ -1,10 +1,12 @@
 import { StatusNotice, StatusPill } from "@/app/_components/status-ui";
 import { InfoHint } from "@/app/_components/info-hint";
+import { RESTAURANT_SELECTED_EVENT } from "@/src/lib/onboarding";
 
 // Client logic for the restaurant selection panels. Colocated with the markup so
 // the UI can be reused (meal-reservation page and onboarding) without duplicating
 // the behavior. The script is self-contained: it queries the data-* hooks below
-// and runs on initial HTML load.
+// and runs on initial HTML load. After a successful selection it announces it as
+// a DOM event so the onboarding guide can react.
 const pickerScript = `
 (function() {
   var restaurantList = document.querySelector("[data-restaurant-list]");
@@ -14,6 +16,10 @@ const pickerScript = `
   var yourRestaurantsMessage = document.querySelector("[data-your-restaurants-message]");
 
   if (!restaurantList && !yourRestaurants) return;
+
+  // When an explicit choice is required, the fallback restaurant the preferences
+  // API returns must not be presented as the user's selection.
+  var hideFallbackDefault = !!restaurantList && restaurantList.dataset.requireChoice === "true" && restaurantList.dataset.hasSavedDefault !== "true";
 
   function setMessage(el, message, tone) {
     el.querySelector("[data-status-label]").textContent = message || "";
@@ -57,6 +63,7 @@ const pickerScript = `
       highlightSelection();
       if (restaurantStatus) setPill(restaurantStatus, r.name || r.catalogId || "Selected", "complete");
       if (restaurantMessage) setMessage(restaurantMessage, "Restaurant preference saved.", "complete");
+      document.dispatchEvent(new CustomEvent(${JSON.stringify(RESTAURANT_SELECTED_EVENT)}));
     } catch (err) {
       if (restaurantStatus) setPill(restaurantStatus, "Error", "error");
       if (restaurantMessage) setMessage(restaurantMessage, err.message || "Could not save restaurant preference.", "error");
@@ -85,6 +92,7 @@ const pickerScript = `
 
   // Reflect the saved default into the status pill and selection highlight
   async function loadPreferences() {
+    if (hideFallbackDefault) return;
     try {
       var prefs = await readJson(await fetch("/webetu/preferences", { method: "GET", credentials: "same-origin" }));
       if (prefs && prefs.defaultRestaurant) {
@@ -131,10 +139,17 @@ const pickerScript = `
 })();
 `;
 
+type RestaurantPickerProps = {
+  // Onboarding asks the user to pick explicitly, so the fallback default is not
+  // shown as selected until they have saved a choice of their own.
+  requireExplicitChoice?: boolean;
+  hasSavedDefault?: boolean;
+};
+
 // The restaurant selection UI: a static catalog ("Default Restaurant") and the
 // user's live restaurants ("Your Restaurants"). Rendered on the meal-reservation
 // page and during onboarding.
-export function RestaurantPicker() {
+export function RestaurantPicker({ requireExplicitChoice = false, hasSavedDefault = false }: RestaurantPickerProps) {
   return (
     <>
       {/* Restaurant selection panel */}
@@ -150,7 +165,12 @@ export function RestaurantPicker() {
           </div>
           <StatusPill data-restaurant-status kind="pending">Not set</StatusPill>
         </div>
-        <div data-restaurant-list className="restaurant-list">
+        <div
+          data-restaurant-list
+          data-require-choice={requireExplicitChoice ? "true" : undefined}
+          data-has-saved-default={hasSavedDefault ? "true" : undefined}
+          className="restaurant-list"
+        >
           <p>Loading restaurants&hellip;</p>
         </div>
         <StatusNotice data-restaurant-message />

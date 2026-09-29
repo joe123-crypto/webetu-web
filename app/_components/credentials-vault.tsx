@@ -1,18 +1,19 @@
 import { StatusNotice, StatusPill, type StatusKind } from "@/app/_components/status-ui";
 import { InfoHint } from "@/app/_components/info-hint";
+import { CREDENTIALS_STATUS_EVENT } from "@/src/lib/onboarding";
+import type { getWebetuCredentialStatus } from "@/src/domains/webetu";
 
 export type CredentialsVaultProps = {
+  // null when the status could not be loaded.
+  status: Awaited<ReturnType<typeof getWebetuCredentialStatus>> | null;
   savedUsername?: string | null;
-  webetuLabel: string;
-  webetuKind: StatusKind;
-  webetuSaveLabel: string;
-  webetuConfigured: boolean;
 };
 
 // Client logic for the Webetu credentials vault. Colocated with the markup so
 // the section can be reused (settings page and onboarding) without duplicating
 // the behavior. The script is self-contained: it queries the data-* hooks below
-// and runs on initial HTML load.
+// and runs on initial HTML load. After a save or revoke it announces the new
+// status as a DOM event so the onboarding guide can react.
 const vaultScript = `
 (function() {
   var webetuForm = document.querySelector("[data-webetu-form]");
@@ -63,6 +64,7 @@ const vaultScript = `
       setPill(webetuStatusEl, label, status.configured ? "complete" : status.status === "revoked" ? "revoked" : status.status === "not_saved" ? "pending" : "error");
       if (webetuSaveButton) webetuSaveButton.textContent = status.configured ? "Update credentials" : "Save credentials";
       if (webetuRevokeButton) webetuRevokeButton.hidden = !status.configured;
+      document.dispatchEvent(new CustomEvent(${JSON.stringify(CREDENTIALS_STATUS_EVENT)}, { detail: { configured: !!status.configured } }));
     } catch (err) {
       setPill(webetuStatusEl, "Unavailable", "error");
     }
@@ -120,13 +122,24 @@ const vaultScript = `
 
 // The Credentials Vault section: save/update/revoke Webetu credentials used for
 // automatic meal reservations. Rendered on the settings page and during onboarding.
-export function CredentialsVault({
-  savedUsername,
-  webetuLabel,
-  webetuKind,
-  webetuSaveLabel,
-  webetuConfigured,
-}: CredentialsVaultProps) {
+export function CredentialsVault({ status, savedUsername }: CredentialsVaultProps) {
+  const webetuConfigured = !!status?.configured;
+  const webetuLabel = webetuConfigured
+    ? "Saved"
+    : status?.status === "revoked"
+    ? "Revoked"
+    : status
+    ? "Not saved"
+    : "Unavailable";
+  const webetuKind: StatusKind = webetuConfigured
+    ? "complete"
+    : status?.status === "revoked"
+    ? "revoked"
+    : status
+    ? "pending"
+    : "error";
+  const webetuSaveLabel = webetuConfigured ? "Update credentials" : "Save credentials";
+
   return (
     <>
       <section className="panel panel-narrow dashboard-form-panel" aria-labelledby="cred-title">
