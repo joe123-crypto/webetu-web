@@ -5,8 +5,8 @@ import { StatusNotice } from "@/app/_components/status-ui";
 import { LoginContent } from "@/app/login/login-content";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Webetu | Sign In",
-  description: "Sign in to your Webetu account to manage your student meal reservations.",
+  title: "AWRS | Sign In",
+  description: "Sign in to your AWRS account to automate your student meal reservations on Webetu.",
   path: "/login",
 });
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PRODUCT_FULL_NAME, PRODUCT_NAME } from "@/src/lib/brand";
 
 /**
  * Canonical origin for the site.
@@ -7,14 +8,14 @@ export const SITE_URL = new URL(
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.webetu.app",
 );
 
-export const SITE_NAME = "Webetu";
+export const SITE_NAME = PRODUCT_NAME;
 
 export const SITE_IMAGE = {
   url: "/og-card.png",
   width: 1200,
   height: 630,
   type: "image/png",
-  alt: "Webetu — student meal reservation platform",
+  alt: `${PRODUCT_NAME} — ${PRODUCT_FULL_NAME}`,
 } as const;
 
 type PageMetadataInput = {

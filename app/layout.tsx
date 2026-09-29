@@ -3,7 +3,8 @@ import { Analytics } from "@vercel/analytics/next";
 import { SITE_IMAGE, SITE_NAME, SITE_URL } from "@/src/lib/site-metadata";
 import "./globals.css";
 
-const description = "Webetu — student meal reservation platform.";
+const description =
+  "AWRS — the Automatic Webetu Reservation System. Automate your student meal reservations on Webetu. Part of the Genaie ecosystem.";
 
 export const metadata: Metadata = {
   metadataBase: SITE_URL,

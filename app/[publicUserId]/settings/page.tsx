@@ -13,7 +13,7 @@ import { InfoHint } from "@/app/_components/info-hint";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Webetu | Settings",
+  title: "AWRS | Settings",
   description: "Manage your account settings and Webetu credentials vault.",
 };
 

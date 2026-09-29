@@ -11,7 +11,7 @@ import { InfoHint } from "@/app/_components/info-hint";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Webetu | Meal Reservation",
+  title: "AWRS | Meal Reservation",
   description: "Manage your Webetu meal reservation restaurant preferences.",
 };
 

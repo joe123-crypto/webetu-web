@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Webetu | Reservation Dashboard",
+  title: "AWRS | Reservation Dashboard",
   description: "Your meal reservation status and run history.",
 };
 
