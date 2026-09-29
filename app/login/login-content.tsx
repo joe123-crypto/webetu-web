@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  sendSignInLinkToEmail,
+  GoogleAuthProvider,
+  signInWithCredential,
   type Auth,
   type User,
 } from "firebase/auth";
 import { StatusNotice, type StatusKind } from "@/app/_components/status-ui";
 import {
-  AUTH_NEXT_STORAGE_KEY,
   authErrorDetails,
   createAndVerifyServerSession,
   destinationForSession,
@@ -27,13 +27,10 @@ import {
   PRODUCT_NAME,
 } from "@/src/lib/brand";
 
-const EMAIL_STORAGE_KEY = "webetuEmailForSignIn";
-
 type Phase =
   | "loading"
   | "ready"
   | "google"
-  | "email"
   | "session"
   | "redirecting"
   | "success"
@@ -49,12 +46,13 @@ export function LoginContent() {
     kind: "loading",
     message: "Preparing secure sign-in...",
   });
-  const [email, setEmail] = useState("");
   const completionRef = useRef<Promise<void> | null>(null);
+  const finishRef = useRef(false);
   const actionInProgressRef = useRef(false);
   const searchParams = useSearchParams();
   const nextParam = safeNext(searchParams.get("next"));
-  const busy = !auth || !settings || ["loading", "google", "email", "session", "redirecting", "success"].includes(phase);
+  const codeParam = searchParams.get("code");
+  const busy = !auth || !settings || ["loading", "google", "session", "redirecting", "success"].includes(phase);
 
   const completeSession = useCallback((user: User, redirectNext?: string | null) => {
     if (completionRef.current) return completionRef.current;
@@ -81,6 +79,44 @@ export function LoginContent() {
     return task;
   }, [nextParam]);
 
+  const finishGoogleSignIn = useCallback(async (authInstance: Auth, code: string) => {
+    if (finishRef.current) return;
+    finishRef.current = true;
+    setPhase("session");
+    setNotice({ kind: "loading", message: "Finishing sign in..." });
+    try {
+      // Exchange the authorization code for a Google id_token server-side
+      // (the client secret must never reach the browser).
+      const exchange = await fetch("/auth/google/finish/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ code }),
+      });
+      const exchangeBody = (await exchange.json().catch(() => ({}))) as {
+        id_token?: string;
+        error?: string;
+      };
+      if (!exchange.ok || !exchangeBody.id_token) {
+        throw new Error(exchangeBody.error || "Could not complete Google sign-in. Please try again.");
+      }
+
+      // Sign the Google credential into the Firebase client SDK, then mint the
+      // server session cookie from the resulting Firebase ID token.
+      const credential = GoogleAuthProvider.credential(exchangeBody.id_token);
+      const result = await signInWithCredential(authInstance, credential);
+      const firebaseIdToken = await result.user.getIdToken(true);
+      const session = await createAndVerifyServerSession(firebaseIdToken, result.user.uid);
+      setPhase("success");
+      setNotice({ kind: "complete", message: "Signed in. Opening your account..." });
+      window.location.assign(destinationForSession(session, nextParam));
+    } catch (error) {
+      finishRef.current = false;
+      setPhase("error");
+      setNotice({ kind: "error", message: authErrorDetails(error).message });
+    }
+  }, [nextParam]);
+
   useEffect(() => {
     let active = true;
 
@@ -100,6 +136,17 @@ export function LoginContent() {
           return;
         }
 
+        if (codeParam) {
+          // Returning from the Google OAuth redirect: complete sign-in here on
+          // the login page instead of on a separate finish page. Drop the code
+          // from the URL so a manual retry starts clean.
+          const url = new URL(window.location.href);
+          url.searchParams.delete("code");
+          window.history.replaceState(null, "", url.pathname + url.search);
+          await finishGoogleSignIn(authInstance, codeParam);
+          return;
+        }
+
         setPhase("ready");
         setNotice({ kind: "info", message: "Choose a sign-in method." });
       } catch (error) {
@@ -114,7 +161,7 @@ export function LoginContent() {
     return () => {
       active = false;
     };
-  }, [completeSession]);
+  }, [completeSession, finishGoogleSignIn, codeParam]);
 
   async function handleCombinedGoogleSignIn() {
     if (busy || actionInProgressRef.current) return;
@@ -144,29 +191,6 @@ export function LoginContent() {
     }
   }
 
-  async function handleEmailSignIn() {
-    if (!auth || !settings || busy || actionInProgressRef.current) return;
-    actionInProgressRef.current = true;
-    setPhase("email");
-    setNotice({ kind: "loading", message: "Sending your secure sign-in link..." });
-    try {
-      const actionCodeSettings = {
-        url: `${settings.emailLinkUrl}?next=${encodeURIComponent(nextParam)}`,
-        handleCodeInApp: true,
-      };
-      await sendSignInLinkToEmail(auth, email.trim(), actionCodeSettings);
-      window.localStorage.setItem(EMAIL_STORAGE_KEY, email.trim());
-      setPhase("ready");
-      setNotice({ kind: "complete", message: `Sign-in link sent to ${email.trim()}.` });
-    } catch (error) {
-      const details = authErrorDetails(error);
-      setPhase("error");
-      setNotice({ kind: "error", message: details.message });
-    } finally {
-      actionInProgressRef.current = false;
-    }
-  }
-
   return (
     <main className="app-main app-main-center">
       <div className="auth-shell">
@@ -191,26 +215,6 @@ export function LoginContent() {
               ? "Continuing to Google..."
               : "Continue with Google"}
           </button>
-          <div className="divider"><span>or</span></div>
-          <form
-            className="auth-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleEmailSignIn();
-            }}
-          >
-            <input
-              type="email"
-              placeholder="name@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              disabled={busy}
-              required
-            />
-            <button className="full-width" type="submit" disabled={busy || !email.trim()}>
-              {phase === "email" ? "Sending..." : "Send Magic Link"}
-            </button>
-          </form>
         </section>
         <a
           className="brand-endorsement"
