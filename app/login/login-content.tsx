@@ -20,6 +20,12 @@ import {
   loadFirebaseClientSettings,
   type FirebaseClientSettings,
 } from "@/src/firebase/client";
+import {
+  PARENT_BRAND,
+  PARENT_LOGO_SRC,
+  PRODUCT_FULL_NAME,
+  PRODUCT_NAME,
+} from "@/src/lib/brand";
 
 const EMAIL_STORAGE_KEY = "webetuEmailForSignIn";
 
@@ -165,8 +171,11 @@ export function LoginContent() {
     <main className="app-main app-main-center">
       <div className="auth-shell">
         <section className="auth-panel">
-          <h1 style={{ fontSize: "2rem", fontWeight: 800 }}>Webetu</h1>
-          <p>Sign in to manage your student meal reservations.</p>
+          <div className="brand-lockup">
+            <h1 className="brand-wordmark">{PRODUCT_NAME}</h1>
+            <p className="brand-fullname">{PRODUCT_FULL_NAME}</p>
+          </div>
+          <p>Sign in to automate your student meal reservations on Webetu.</p>
           <StatusNotice kind={notice.kind} role="status" aria-live="polite">
             {notice.message}
           </StatusNotice>
@@ -203,6 +212,17 @@ export function LoginContent() {
             </button>
           </form>
         </section>
+        <a
+          className="brand-endorsement"
+          href="https://genaie.site"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`${PRODUCT_NAME} — a ${PARENT_BRAND} product`}
+        >
+          <span>by</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={PARENT_LOGO_SRC} alt={PARENT_BRAND} />
+        </a>
       </div>
     </main>
   );

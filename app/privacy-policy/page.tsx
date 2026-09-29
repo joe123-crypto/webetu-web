@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { pageMetadata } from "@/src/lib/site-metadata";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Webetu | Privacy & Policy",
-  description: "How Webetu handles your data and Webetu credentials.",
+  title: "AWRS | Privacy & Policy",
+  description: "How AWRS handles your data and your Webetu credentials.",
   path: "/privacy-policy",
 });
 
@@ -17,8 +17,9 @@ export default function PrivacyPolicyPage() {
           <h1>Privacy &amp; Policy</h1>
           <p className="policy-updated">Last updated: September 29, 2026</p>
           <p>
-            Webetu is a student meal reservation platform. This page explains
-            what we collect and how we use it.
+            AWRS (Automatic Webetu Reservation System), a Genaie product,
+            automates your student meal reservations on the Webetu platform.
+            This page explains what we collect and how we use it.
           </p>
         </section>
 

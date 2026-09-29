@@ -1037,6 +1037,78 @@ button.password-toggle {
   width: auto;
 }
 
+/* ── AWRS product branding (a Genaie product) ───────────────────────── */
+
+.brand-lockup {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+/* Lead product mark. */
+.brand-wordmark {
+  margin: 0;
+  font-weight: var(--font-weight-brand);
+  font-size: clamp(2.4rem, 6vw, 3rem);
+  letter-spacing: 0.14em;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.brand-wordmark-sm {
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+}
+
+/* Expanded name, subordinate to the lead mark. */
+.brand-fullname {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* Subtle "by Genaie" endorsement lockup. */
+.brand-endorsement,
+.dashboard-endorsement {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.brand-endorsement {
+  justify-self: center;
+  justify-content: center;
+}
+
+.brand-endorsement:hover {
+  color: var(--text-primary);
+}
+
+.brand-endorsement img,
+.dashboard-endorsement img {
+  height: 13px;
+  width: auto;
+  opacity: 0.8;
+}
+
+.brand-endorsement:hover img {
+  opacity: 1;
+}
+
+.dashboard-brand-block {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
 .app-header h1 {
   font-weight: var(--font-weight-brand);
 }
