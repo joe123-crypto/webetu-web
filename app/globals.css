@@ -4664,3 +4664,69 @@ button.landing-pricing-button {
 .switch[aria-checked="true"] .switch-thumb {
   left: 21px;
 }
+
+/* Toggle row + Manual Run button: side-by-side on desktop, stacked on mobile. */
+.auto-reservation-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.auto-reservation-actions .switch-row {
+  flex: 1 1 auto;
+}
+
+.manual-run-button {
+  position: relative;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.manual-run-progress {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--accent-soft);
+  transition: width 400ms ease;
+  pointer-events: none;
+}
+
+.manual-run-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.manual-run-spinner {
+  width: 16px;
+  height: 16px;
+  animation: status-spin 900ms linear infinite;
+}
+
+@media (max-width: 560px) {
+  .auto-reservation-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .manual-run-button {
+    width: 100%;
+  }
+
+  .manual-run-label {
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manual-run-progress {
+    transition: none;
+  }
+
+  .manual-run-spinner {
+    animation: none;
+  }
+}
