@@ -67,16 +67,6 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="policy-card">
-          <h2>Services we use</h2>
-          <ul>
-            <li>Google &amp; Firebase: sign-in and data storage.</li>
-            <li>Vercel: hosting and analytics.</li>
-            <li>Resend: reservation emails.</li>
-            <li>Webetu / ONOU portal: the meal reservation system.</li>
-          </ul>
-        </section>
-
-        <section className="policy-card">
           <h2>Security</h2>
           <p>
             Sensitive credentials are encrypted (AES-256-GCM), sessions use
