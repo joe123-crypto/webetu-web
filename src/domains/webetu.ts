@@ -148,6 +148,15 @@ export async function getWebetuPreferencesForUid(uid: string) {
   return webetuPreferencesFromData(doc.data());
 }
 
+// Whether the user has explicitly chosen a default restaurant. Unlike
+// getWebetuPreferencesForUid, this does not count the fallback restaurant.
+export async function hasSavedWebetuDefaultRestaurant(uid: string): Promise<boolean> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const doc = await db.collection("webetuPreferences").doc(safeUid).get();
+  return Boolean(doc.data()?.defaultRestaurant);
+}
+
 export async function setWebetuDefaultRestaurantForUid(uid: string, restaurantInput: any) {
   const safeUid = validateFirebaseUid(uid);
   const restaurant = liveWebetuRestaurantFromPayload(restaurantInput);
