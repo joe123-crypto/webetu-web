@@ -817,6 +817,18 @@ button.onboarding-sign-out:hover:not(:disabled) {
 
   .onboarding-guide {
     position: static;
+    padding-bottom: 18px;
+  }
+
+  /* On phones the card is trimmed to the eyebrow + progress bar; the step list,
+     copy, and Back/Next are dropped because onboarding auto-advances once each
+     step's requirement is met. */
+  .onboarding-guide-steps,
+  .onboarding-guide-title,
+  .onboarding-guide-hint,
+  .onboarding-guide-actions,
+  .onboarding-guide-pending {
+    display: none;
   }
 }
 

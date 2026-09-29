@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Settings, Utensils, Home } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -58,6 +58,9 @@ export function OnboardingGuide({ step, publicUserId, ready: initialReady }: Onb
   const [ready, setReady] = useState(initialReady);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // On phones the guide is trimmed to the progress bar, so there are no Back/Next
+  // buttons — onboarding advances on its own once the step's requirement is met.
+  const [isMobile, setIsMobile] = useState(false);
 
   // The reusable credentials/restaurant UIs announce progress as DOM events.
   useEffect(() => {
@@ -82,7 +85,7 @@ export function OnboardingGuide({ step, publicUserId, ready: initialReady }: Onb
 
   const stepHref = (target: number) => `/${publicUserId}/onboarding?step=${target}`;
 
-  async function handleFinish() {
+  const handleFinish = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
@@ -101,7 +104,33 @@ export function OnboardingGuide({ step, publicUserId, ready: initialReady }: Onb
       setError(err instanceof Error ? err.message : "Could not finish onboarding. Please try again.");
       setBusy(false);
     }
-  }
+  }, [publicUserId]);
+
+  // Track the phone breakpoint (the layout's own 820px collapse point). Guarded
+  // for SSR and jsdom, where `matchMedia` is absent and this stays desktop.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 820px)");
+    setIsMobile(query.matches);
+    const onChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
+  // With no buttons on mobile, move forward automatically once the step is done:
+  // to the next step, or — on the final step — finish and open the dashboard.
+  // Each hop reloads the page, so the server stays the source of truth for order.
+  const autoFinished = useRef(false);
+  useEffect(() => {
+    if (!isMobile || !ready) return;
+    if (isLast) {
+      if (autoFinished.current) return;
+      autoFinished.current = true;
+      void handleFinish();
+    } else {
+      window.location.assign(`/${publicUserId}/onboarding?step=${current + 1}`);
+    }
+  }, [isMobile, ready, isLast, current, publicUserId, handleFinish]);
 
   return (
     <aside className="onboarding-guide" aria-label={`Onboarding step ${current} of ${total}`}>
