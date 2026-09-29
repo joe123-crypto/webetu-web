@@ -128,16 +128,16 @@ a.secondary:hover,
 button.danger,
 a.danger,
 .button.danger {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: var(--text-inverse);
+  background: var(--background);
+  border-color: var(--danger-border);
+  color: var(--danger);
 }
 
 button.danger:hover:not(:disabled),
 a.danger:hover,
 .button.danger:hover {
-  background: var(--danger);
-  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  border-color: var(--danger);
 }
 
 button:focus-visible,
