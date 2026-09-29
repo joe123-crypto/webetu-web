@@ -123,7 +123,7 @@ function ReservationTaskCard({ task, runs }: { task: DashboardTaskSnapshot; runs
                 }}
               >
                 <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                  <span style={{ color: "#374151" }}>{formatDate(run.runAt)}</span>
+                  <span style={{ color: "#374151" }}>{formatDate(run.runAt ?? run.createdAt)}</span>
                   <span style={{ color: "#6b7280" }}>{runResultLabel(run.status)}</span>
                 </div>
                 {run.summary && <span style={{ color: "#6b7280" }}>{run.summary}</span>}
