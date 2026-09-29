@@ -1100,6 +1100,40 @@ button.password-toggle {
   margin-bottom: 0;
 }
 
+.policy-page h2 {
+  margin: 0 0 12px;
+}
+
+.policy-page ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.policy-updated {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.policy-card-highlight {
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.policy-page .policy-card.policy-card-highlight {
+  border-top: 0;
+  padding-top: 24px;
+}
+
+.policy-page .policy-card-highlight + .policy-card {
+  border-top: 0;
+  padding-top: 0;
+}
+
 /* Signed-in dashboard. */
 .dashboard-app {
   display: grid;
