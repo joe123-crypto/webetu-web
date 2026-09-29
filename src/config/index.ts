@@ -55,7 +55,6 @@ export const config = {
   firebaseApiKey: process.env.FIREBASE_API_KEY ?? "",
   firebaseAuthDomain: process.env.FIREBASE_AUTH_DOMAIN ?? "",
   firebaseAppId: process.env.FIREBASE_APP_ID ?? "",
-  firebaseEmailLinkUrl: process.env.FIREBASE_EMAIL_LINK_URL ?? `${publicBaseUrl}/auth/firebase/finish`,
   firebaseServiceAccountJsonBase64: process.env.FIREBASE_SERVICE_ACCOUNT_JSON_BASE64 ?? "",
   internalApiKey: process.env.WEBETU_INTERNAL_API_KEY ?? "",
   webetuApiBaseUrl: (process.env.WEBETU_API_BASE_URL ?? "").trim().replace(/\/+$/, ""),
@@ -115,13 +114,11 @@ export function firebaseWebConfig() {
     ["FIREBASE_AUTH_DOMAIN", firebase.authDomain],
     ["FIREBASE_PROJECT_ID", firebase.projectId],
     ["FIREBASE_APP_ID", firebase.appId],
-    ["FIREBASE_EMAIL_LINK_URL", config.firebaseEmailLinkUrl],
   ];
   const missing = required.filter(([, value]) => !value).map(([name]) => name);
   return {
     configured: missing.length === 0,
     missing,
     firebase,
-    emailLinkUrl: config.firebaseEmailLinkUrl,
   };
 }
