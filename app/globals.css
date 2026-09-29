@@ -1317,38 +1317,11 @@ button.password-toggle {
   width: 100%;
 }
 
-.auth-form {
-  display: grid;
-  gap: 10px;
-}
-
 .auth-footer {
   margin: 24px 0 0;
   color: var(--text-secondary);
   font-size: 0.8rem;
   line-height: 1.5;
-}
-
-.divider {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 18px 0;
-  color: var(--text-secondary);
-  font-size: 0.88rem;
-}
-
-.divider::before,
-.divider::after {
-  content: "";
-  height: 1px;
-  flex: 1;
-  background: var(--border);
-}
-
-.divider span {
-  padding: 0 10px;
 }
 
 .policy-page .shell {

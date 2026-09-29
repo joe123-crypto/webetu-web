@@ -26,11 +26,10 @@ export async function GET(req: NextRequest) {
       throw new Error("State parameter expired. Please try again.");
     }
 
-    // Sign-in flow: redirect to the finish page (Google ID token exchange happens there).
+    // Sign-in flow: redirect back to the login page, which completes the Google
+    // ID token exchange inline and shows a "Finishing sign in..." status.
     if (payload.flow === "signin") {
-      const finishUrl = new URL("/auth/google/finish", req.nextUrl.origin);
-      // The code is forwarded to the finish endpoint via a form-post style redirect.
-      // For simplicity in this scaffold, redirect with code in query string.
+      const finishUrl = new URL("/login", req.nextUrl.origin);
       const code = searchParams.get("code");
       if (code) finishUrl.searchParams.set("code", code);
       if (payload.next) finishUrl.searchParams.set("next", payload.next);

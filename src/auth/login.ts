@@ -140,7 +140,7 @@ export function authErrorDetails(error: unknown) {
     message = "Google sign-in was closed before it finished. Please try again.";
     retryWithRedirect = true;
   } else if (code === "auth/popup-blocked") {
-    message = "Your browser blocked the Google sign-in window. Allow pop-ups and try again, or use a magic link.";
+    message = "Your browser blocked the Google sign-in window. Allow pop-ups and try again.";
     retryWithRedirect = true;
   } else if (code === "auth/cancelled-popup-request") {
     message = "Another sign-in attempt interrupted this one. Please try again.";

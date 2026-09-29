@@ -5,7 +5,6 @@ export type FirebaseClientSettings = {
   configured: boolean;
   missing: string[];
   firebase: FirebaseOptions;
-  emailLinkUrl: string;
 };
 
 export async function loadFirebaseClientSettings(fetcher: typeof fetch = fetch) {
