@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { OnboardingGuide } from "@/app/_components/onboarding-guide";
 import { CREDENTIALS_STATUS_EVENT, RESTAURANT_SELECTED_EVENT } from "@/src/lib/onboarding";
@@ -10,6 +10,11 @@ function dispatch(name: string, detail?: unknown) {
 }
 
 describe("OnboardingGuide", () => {
+  // Guard the desktop tests against a stub leaking from a failed mobile test.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("highlights the current step and lists all steps", () => {
     render(<OnboardingGuide step={2} publicUserId="abc123" ready={false} />);
 
@@ -54,6 +59,44 @@ describe("OnboardingGuide", () => {
     render(<OnboardingGuide step={1} publicUserId="abc123" ready />);
     expect(screen.getByRole("link", { name: "Next" })).toBeInTheDocument();
     expect(screen.queryByText("Save your credentials to continue.")).not.toBeInTheDocument();
+  });
+
+  it("auto-advances on mobile once the step's requirement is met", async () => {
+    // Report the phone breakpoint so the guide runs its buttonless auto-advance.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    // jsdom's real location.assign is a non-configurable no-op, so swap the
+    // whole location object to capture the navigation.
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, href: "http://localhost/" });
+
+    const { unmount } = render(<OnboardingGuide step={1} publicUserId="abc123" ready />);
+    await act(async () => {});
+    expect(assign).toHaveBeenCalledWith("/abc123/onboarding?step=2");
+    unmount();
+
+    // The final step has no requirement, so it finishes and opens the dashboard.
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OnboardingGuide step={3} publicUserId="abc123" ready />);
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/webetu/onboarding/complete",
+      expect.objectContaining({ method: "POST", credentials: "same-origin" }),
+    );
+
+    vi.unstubAllGlobals();
   });
 
   it("shows the server's reason when finishing is refused", async () => {
