@@ -2,28 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/src/config";
 import { verifyFirebaseRequest } from "@/src/security/session";
 import { listWebetuRestaurantCatalog } from "@/src/domains/webetu";
+import { liveWebetuRestaurantFromPayload } from "@/src/lib/utils";
 
 export const runtime = "nodejs";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
 // Map a worker read-API restaurant into the shape the meal-reservation UI and the
-// preferences save path expect. Preserves idDepot so a selection can be persisted.
+// preferences save path expect. Reuses liveWebetuRestaurantFromPayload — the same
+// normalizer/validator the save path runs — so every restaurant we surface here is
+// guaranteed saveable (matching idDepot / catalogId keys) and no shape drift can
+// slip a selection past the picker that the save path would then reject. Entries
+// missing a usable depot id or name are dropped rather than shown as broken buttons.
 function normalizeLiveRestaurant(entry: any) {
   if (!entry || typeof entry !== "object") return null;
-  const meals = Array.isArray(entry.meals) ? entry.meals.map(String) : [];
-  const idDepot =
-    entry.idDepot == null || entry.idDepot === "" ? null : Number(entry.idDepot);
-  return {
-    catalogId: entry.catalogId ?? (idDepot ? `onou-depot-${idDepot}` : null),
-    name: entry.name ?? entry.nameAR ?? entry.nameFR ?? "",
-    idDepot,
-    residence: entry.residence == null || entry.residence === "" ? null : Number(entry.residence),
-    wilaya: entry.wilaya == null || entry.wilaya === "" ? null : String(entry.wilaya),
-    breakfast: meals.includes("breakfast"),
-    lunch: meals.includes("lunch"),
-    dinner: meals.includes("dinner"),
-  };
+  // The worker may express meal availability as a `meals` array; project it onto the
+  // explicit breakfast/lunch/dinner flags the shared normalizer reads.
+  const source = Array.isArray(entry.meals)
+    ? (() => {
+        const meals = entry.meals.map(String);
+        return {
+          ...entry,
+          breakfast: entry.breakfast ?? meals.includes("breakfast"),
+          lunch: entry.lunch ?? meals.includes("lunch"),
+          dinner: entry.dinner ?? meals.includes("dinner"),
+        };
+      })()
+    : entry;
+  try {
+    return liveWebetuRestaurantFromPayload(source);
+  } catch {
+    return null;
+  }
 }
 
 // Fetch the user's live ONOU restaurants from the backend worker read-API. Returns
