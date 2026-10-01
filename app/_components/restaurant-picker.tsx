@@ -9,17 +9,17 @@ import { RESTAURANT_SELECTED_EVENT } from "@/src/lib/onboarding";
 // a DOM event so the onboarding guide can react.
 const pickerScript = `
 (function() {
-  var restaurantList = document.querySelector("[data-restaurant-list]");
+  var restaurantPanel = document.querySelector("[data-restaurant-panel]");
   var restaurantStatus = document.querySelector("[data-restaurant-status]");
   var restaurantMessage = document.querySelector("[data-restaurant-message]");
   var yourRestaurants = document.querySelector("[data-your-restaurants]");
   var yourRestaurantsMessage = document.querySelector("[data-your-restaurants-message]");
 
-  if (!restaurantList && !yourRestaurants) return;
+  if (!restaurantPanel && !yourRestaurants) return;
 
   // When an explicit choice is required, the fallback restaurant the preferences
   // API returns must not be presented as the user's selection.
-  var hideFallbackDefault = !!restaurantList && restaurantList.dataset.requireChoice === "true" && restaurantList.dataset.hasSavedDefault !== "true";
+  var hideFallbackDefault = !!restaurantPanel && restaurantPanel.dataset.requireChoice === "true" && restaurantPanel.dataset.hasSavedDefault !== "true";
 
   function setMessage(el, message, tone) {
     el.querySelector("[data-status-label]").textContent = message || "";
@@ -46,17 +46,15 @@ const pickerScript = `
 
   var selectedKey = null;
 
-  // Mark the currently-selected restaurant across both lists
+  // Mark the currently-selected restaurant in the list
   function highlightSelection() {
-    [restaurantList, yourRestaurants].forEach(function(container) {
-      if (!container) return;
-      container.querySelectorAll("[data-selection-key]").forEach(function(el) {
-        el.setAttribute("aria-pressed", selectedKey && el.dataset.selectionKey === selectedKey ? "true" : "false");
-      });
+    if (!yourRestaurants) return;
+    yourRestaurants.querySelectorAll("[data-selection-key]").forEach(function(el) {
+      el.setAttribute("aria-pressed", selectedKey && el.dataset.selectionKey === selectedKey ? "true" : "false");
     });
   }
 
-  // Save the chosen restaurant as the user's default and update both lists
+  // Save the chosen restaurant as the user's default and update the panels
   async function selectRestaurant(r) {
     if (restaurantStatus) setPill(restaurantStatus, "Saving…", "loading");
     if (restaurantMessage) setMessage(restaurantMessage, "", "info");
@@ -114,18 +112,6 @@ const pickerScript = `
     } catch (e) {}
   }
 
-  // Default Restaurant panel: the static restaurant catalog
-  async function loadDefaultRestaurants() {
-    if (!restaurantList) return;
-    restaurantList.innerHTML = "<p>Loading restaurants…</p>";
-    try {
-      var data = await readJson(await fetch("/webetu/restaurants", { method: "GET", credentials: "same-origin" }));
-      renderOptions(restaurantList, data.catalog || []);
-    } catch (err) {
-      restaurantList.innerHTML = "<p>Could not load restaurants.</p>";
-    }
-  }
-
   // Your Restaurants panel: the user's live ONOU restaurants (falls back to catalog server-side)
   async function loadYourRestaurants() {
     if (!yourRestaurants) return;
@@ -141,7 +127,7 @@ const pickerScript = `
 
   async function loadRestaurants() {
     await loadPreferences();
-    await Promise.all([loadDefaultRestaurants(), loadYourRestaurants()]);
+    await loadYourRestaurants();
     highlightSelection();
   }
 
@@ -156,32 +142,30 @@ type RestaurantPickerProps = {
   hasSavedDefault?: boolean;
 };
 
-// The restaurant selection UI: a static catalog ("Default Restaurant") and the
-// user's live restaurants ("Your Restaurants"). Rendered on the meal-reservation
-// page and during onboarding.
+// The restaurant selection UI: the saved default ("Default Restaurant") and the
+// user's live restaurants ("Your Restaurants"), which are clicked to change the
+// default. Rendered on the meal-reservation page and during onboarding.
 export function RestaurantPicker({ requireExplicitChoice = false, hasSavedDefault = false }: RestaurantPickerProps) {
   return (
     <>
-      {/* Restaurant selection panel */}
-      <section className="panel panel-narrow" aria-labelledby="restaurant-title">
+      {/* Default restaurant panel: display only */}
+      <section
+        className="panel panel-narrow"
+        aria-labelledby="restaurant-title"
+        data-restaurant-panel
+        data-require-choice={requireExplicitChoice ? "true" : undefined}
+        data-has-saved-default={hasSavedDefault ? "true" : undefined}
+      >
         <div className="panel-head">
           <div>
             <h2 id="restaurant-title" className="panel-title">
               Default Restaurant
               <InfoHint label="Default Restaurant">
-                Choose the restaurant for your daily meal reservations.
+                The restaurant used for your daily meal reservations. Pick one under Your Restaurants to change it.
               </InfoHint>
             </h2>
           </div>
           <StatusPill data-restaurant-status kind="pending">Not set</StatusPill>
-        </div>
-        <div
-          data-restaurant-list
-          data-require-choice={requireExplicitChoice ? "true" : undefined}
-          data-has-saved-default={hasSavedDefault ? "true" : undefined}
-          className="restaurant-list"
-        >
-          <p>Loading restaurants&hellip;</p>
         </div>
         <StatusNotice data-restaurant-message />
       </section>
