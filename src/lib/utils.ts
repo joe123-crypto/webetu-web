@@ -202,3 +202,23 @@ export function liveWebetuRestaurantFromPayload(input: any) {
     source: String(input.source ?? "onou_getdepotres"),
   };
 }
+
+// Map one restaurant from the worker read-API ({ idDepot, name, nameAR, nameFR, meals })
+// into the shape the preferences save path accepts. Normalizes through
+// liveWebetuRestaurantFromPayload, so anything returned here is guaranteed saveable;
+// entries without a usable depot id or name yield null. The worker omits `meals` when
+// no meal is offered, so a missing list means all meal flags are false.
+export function liveRestaurantFromWorkerEntry(entry: any) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+  const meals: string[] = Array.isArray(entry.meals) ? entry.meals.map(String) : [];
+  try {
+    return liveWebetuRestaurantFromPayload({
+      ...entry,
+      breakfast: entry.breakfast ?? meals.includes("breakfast"),
+      lunch: entry.lunch ?? meals.includes("lunch"),
+      dinner: entry.dinner ?? meals.includes("dinner"),
+    });
+  } catch {
+    return null;
+  }
+}

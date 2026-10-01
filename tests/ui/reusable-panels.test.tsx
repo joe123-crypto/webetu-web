@@ -138,4 +138,33 @@ describe("RestaurantPicker", () => {
 
     document.removeEventListener(RESTAURANT_SELECTED_EVENT, announced);
   });
+
+  it("highlights the same depot in both lists despite different catalogIds", async () => {
+    // The built-in catalog and the live list name the same canteen differently.
+    const catalogEntry = { catalogId: "bab-ezzouar-03", name: "Bab Ezzouar 03", idDepot: 190 };
+    const liveEntry = { catalogId: "onou-depot-190", name: "Bab Ezzouar 03", idDepot: 190 };
+    const other = { catalogId: "onou-depot-42", name: "Other", idDepot: 42 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/webetu/preferences" && init?.method === "POST") return json({ defaultRestaurant: liveEntry });
+        if (url === "/webetu/preferences") return json({ defaultRestaurant: other, overrides: {} });
+        if (url === "/webetu/restaurants") return json({ catalog: [catalogEntry] });
+        if (url === "/webetu/restaurants/live") return json({ restaurants: [liveEntry, other] });
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+    const live = (catalogId: string) =>
+      document.querySelector<HTMLButtonElement>(`[data-your-restaurants] [data-catalog-id="${catalogId}"]`);
+
+    mountWithScript(<RestaurantPicker />);
+    await waitFor(() => expect(live("onou-depot-42")).toHaveAttribute("aria-pressed", "true"));
+    expect(option("bab-ezzouar-03")).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(live("onou-depot-190")!);
+
+    await waitFor(() => expect(option("bab-ezzouar-03")).toHaveAttribute("aria-pressed", "true"));
+    expect(live("onou-depot-190")).toHaveAttribute("aria-pressed", "true");
+    expect(live("onou-depot-42")).toHaveAttribute("aria-pressed", "false");
+  });
 });
