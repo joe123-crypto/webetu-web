@@ -90,8 +90,7 @@ describe("RestaurantPicker", () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/webetu/preferences" && init?.method === "POST") return json({ defaultRestaurant: chosen });
       if (url === "/webetu/preferences") return json({ defaultRestaurant: fallback, overrides: {} });
-      if (url === "/webetu/restaurants") return json({ catalog: [fallback, chosen] });
-      if (url === "/webetu/restaurants/live") return json({ restaurants: [] });
+      if (url === "/webetu/restaurants/live") return json({ restaurants: [fallback, chosen] });
       throw new Error(`unexpected fetch ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -99,7 +98,7 @@ describe("RestaurantPicker", () => {
   }
 
   function option(catalogId: string) {
-    return document.querySelector<HTMLButtonElement>(`[data-restaurant-list] [data-catalog-id="${catalogId}"]`);
+    return document.querySelector<HTMLButtonElement>(`[data-your-restaurants] [data-catalog-id="${catalogId}"]`);
   }
 
   it("shows the saved default as selected on the restaurants page", async () => {
@@ -108,6 +107,7 @@ describe("RestaurantPicker", () => {
 
     await waitFor(() => expect(option("fallback")).toHaveAttribute("aria-pressed", "true"));
     expect(pillLabel("[data-restaurant-status]")).toBe("Fallback Restaurant");
+    expect(document.querySelector("[data-restaurant-panel] .restaurant-option")).toBeNull();
   });
 
   it("does not present the fallback as a choice when an explicit pick is required", async () => {
@@ -139,8 +139,8 @@ describe("RestaurantPicker", () => {
     document.removeEventListener(RESTAURANT_SELECTED_EVENT, announced);
   });
 
-  it("highlights the same depot in both lists despite different catalogIds", async () => {
-    // The built-in catalog and the live list name the same canteen differently.
+  it("matches the saved default to the live list by depot despite a different catalogId", async () => {
+    // The saved default may come from the built-in catalog, which names the canteen differently.
     const catalogEntry = { catalogId: "bab-ezzouar-03", name: "Bab Ezzouar 03", idDepot: 190 };
     const liveEntry = { catalogId: "onou-depot-190", name: "Bab Ezzouar 03", idDepot: 190 };
     const other = { catalogId: "onou-depot-42", name: "Other", idDepot: 42 };
@@ -148,8 +148,7 @@ describe("RestaurantPicker", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === "/webetu/preferences" && init?.method === "POST") return json({ defaultRestaurant: liveEntry });
-        if (url === "/webetu/preferences") return json({ defaultRestaurant: other, overrides: {} });
-        if (url === "/webetu/restaurants") return json({ catalog: [catalogEntry] });
+        if (url === "/webetu/preferences") return json({ defaultRestaurant: catalogEntry, overrides: {} });
         if (url === "/webetu/restaurants/live") return json({ restaurants: [liveEntry, other] });
         throw new Error(`unexpected fetch ${url}`);
       }),
@@ -158,13 +157,7 @@ describe("RestaurantPicker", () => {
       document.querySelector<HTMLButtonElement>(`[data-your-restaurants] [data-catalog-id="${catalogId}"]`);
 
     mountWithScript(<RestaurantPicker />);
-    await waitFor(() => expect(live("onou-depot-42")).toHaveAttribute("aria-pressed", "true"));
-    expect(option("bab-ezzouar-03")).toHaveAttribute("aria-pressed", "false");
-
-    fireEvent.click(live("onou-depot-190")!);
-
-    await waitFor(() => expect(option("bab-ezzouar-03")).toHaveAttribute("aria-pressed", "true"));
-    expect(live("onou-depot-190")).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(live("onou-depot-190")).toHaveAttribute("aria-pressed", "true"));
     expect(live("onou-depot-42")).toHaveAttribute("aria-pressed", "false");
   });
 });
