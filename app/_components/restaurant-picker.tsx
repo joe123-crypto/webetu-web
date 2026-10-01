@@ -35,14 +35,23 @@ const pickerScript = `
     return body;
   }
 
-  var selectedCatalogId = null;
+  // Identify a restaurant by its ONOU depot id when known: the same canteen can carry
+  // different catalogIds in the static catalog and the live list. Fall back to catalogId.
+  function selectionKey(r) {
+    if (!r) return null;
+    var idDepot = Number(r.idDepot);
+    if (Number.isInteger(idDepot) && idDepot > 0) return "depot:" + idDepot;
+    return r.catalogId ? "catalog:" + r.catalogId : null;
+  }
+
+  var selectedKey = null;
 
   // Mark the currently-selected restaurant across both lists
   function highlightSelection() {
     [restaurantList, yourRestaurants].forEach(function(container) {
       if (!container) return;
-      container.querySelectorAll("[data-catalog-id]").forEach(function(el) {
-        el.setAttribute("aria-pressed", el.dataset.catalogId === selectedCatalogId ? "true" : "false");
+      container.querySelectorAll("[data-selection-key]").forEach(function(el) {
+        el.setAttribute("aria-pressed", selectedKey && el.dataset.selectionKey === selectedKey ? "true" : "false");
       });
     });
   }
@@ -59,7 +68,7 @@ const pickerScript = `
         credentials: "same-origin",
         body: JSON.stringify({ restaurant: r })
       }));
-      selectedCatalogId = r.catalogId || null;
+      selectedKey = selectionKey(r);
       highlightSelection();
       if (restaurantStatus) setPill(restaurantStatus, r.name || r.catalogId || "Selected", "complete");
       if (restaurantMessage) setMessage(restaurantMessage, "Restaurant preference saved.", "complete");
@@ -83,6 +92,7 @@ const pickerScript = `
       btn.type = "button";
       btn.className = "restaurant-option";
       btn.dataset.catalogId = r.catalogId || "";
+      btn.dataset.selectionKey = selectionKey(r) || "";
       btn.setAttribute("aria-pressed", "false");
       btn.textContent = r.name || r.catalogId || "Unknown";
       btn.addEventListener("click", function() { selectRestaurant(r); });
@@ -96,9 +106,9 @@ const pickerScript = `
     try {
       var prefs = await readJson(await fetch("/webetu/preferences", { method: "GET", credentials: "same-origin" }));
       if (prefs && prefs.defaultRestaurant) {
-        selectedCatalogId = prefs.defaultRestaurant.catalogId || null;
-        if (selectedCatalogId && restaurantStatus) {
-          setPill(restaurantStatus, prefs.defaultRestaurant.name || selectedCatalogId, "complete");
+        selectedKey = selectionKey(prefs.defaultRestaurant);
+        if (selectedKey && restaurantStatus) {
+          setPill(restaurantStatus, prefs.defaultRestaurant.name || prefs.defaultRestaurant.catalogId || "Selected", "complete");
         }
       }
     } catch (e) {}
