@@ -163,6 +163,7 @@ export function CredentialsVault({ status, savedUsername }: CredentialsVaultProp
               autoComplete="username"
               maxLength={120}
               defaultValue={savedUsername ?? ""}
+              placeholder="YYYYXXXXXXXX"
               required
             />
           </label>
@@ -175,6 +176,7 @@ export function CredentialsVault({ status, savedUsername }: CredentialsVaultProp
                 type="password"
                 autoComplete="current-password"
                 maxLength={256}
+                placeholder="Pmu67tlo"
                 required
               />
               <button
