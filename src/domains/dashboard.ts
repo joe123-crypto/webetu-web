@@ -8,6 +8,17 @@ export type DashboardTaskService = "webetu" | "delivery";
 export type DashboardTaskStatus = "active" | "running" | "paused" | "failed" | "disabled";
 export type DashboardLastRunStatus = "success" | "partial" | "failed" | "skipped" | "action_required";
 
+// One per-date reservation outcome, as sent by the backend worker in the POST
+// `results` array. Per-date `status` is broader than DashboardLastRunStatus
+// (e.g. `already_booked`, `dry_run`), so it stays a free string with a length cap.
+export type DashboardRunResult = {
+  date: string;
+  status: string;
+  mealsBooked: number;
+  mealsTotal: number;
+  restaurant: string;
+};
+
 export type DashboardTaskSnapshot = {
   enabled: boolean;
   lastRunAt: string | null;
@@ -50,6 +61,38 @@ function normalizeOptionalString(value: unknown, maxLength: number, field: strin
   if (!text) return null;
   if (text.includes("\0")) throw httpError(400, `${field} is invalid.`);
   return text.slice(0, maxLength);
+}
+
+function clampMealCount(value: unknown): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  return Math.min(Math.floor(num), 3);
+}
+
+// Validate the per-date `results` array from the worker. Drops anything that
+// isn't a well-formed object, caps the list length, and truncates strings so a
+// malformed/oversized payload can never bloat Firestore or the email.
+export function normalizeRunResults(value: unknown): DashboardRunResult[] {
+  if (!Array.isArray(value)) return [];
+  const results: DashboardRunResult[] = [];
+  for (const item of value) {
+    if (results.length >= 40) break;
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+    const date = typeof entry.date === "string" ? entry.date.trim().slice(0, 32) : "";
+    if (!date) continue;
+    const status = typeof entry.status === "string" ? entry.status.trim().slice(0, 40) : "";
+    const restaurant =
+      typeof entry.restaurant === "string" ? entry.restaurant.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+    results.push({
+      date,
+      status,
+      mealsBooked: clampMealCount(entry.mealsBooked),
+      mealsTotal: clampMealCount(entry.mealsTotal),
+      restaurant,
+    });
+  }
+  return results;
 }
 
 function dateToIso(value: unknown): string | null {
@@ -119,6 +162,7 @@ export async function upsertDashboardTaskStatus(body: Record<string, unknown>) {
   const scheduleLabel = normalizeOptionalString(body.scheduleLabel, 160, "scheduleLabel");
   const timezone = normalizeOptionalString(body.timezone, 80, "timezone");
   const lastRunSummary = normalizeOptionalString(body.lastRunSummary, 240, "lastRunSummary");
+  const results = normalizeRunResults(body.results);
   const enabled = body.enabled === false ? false : true;
 
   const payload = {
@@ -133,6 +177,7 @@ export async function upsertDashboardTaskStatus(body: Record<string, unknown>) {
     lastRunAt,
     lastRunStatus,
     lastRunSummary,
+    results,
     source: "agent",
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -159,12 +204,13 @@ export async function upsertDashboardTaskStatus(body: Record<string, unknown>) {
     await docRef.collection("runs").add({
       status: lastRunStatus,
       summary: lastRunSummary,
+      results,
       runAt: lastRunAt, // may be null
       createdAt: FieldValue.serverTimestamp(),
     });
   }
 
-  return { ok: true as const, userId, taskId };
+  return { ok: true as const, userId, taskId, results };
 }
 
 export type DashboardTaskRun = {
