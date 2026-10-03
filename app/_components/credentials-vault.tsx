@@ -148,7 +148,15 @@ export function CredentialsVault({ status, savedUsername }: CredentialsVaultProp
             <h2 id="cred-title" className="panel-title">
               Credentials Vault
               <InfoHint label="Credentials Vault">
-                Save the Webetu credentials used for automatic meal reservations.
+                Use the same username and password you use to sign in to Webetu —
+                the credentials saved here are exactly the ones entered on the
+                Webetu login page shown below.
+                <img
+                  src="/webetu_login.jpeg"
+                  alt="The Webetu login page with its username and password fields"
+                  width={540}
+                  height={1200}
+                />
               </InfoHint>
             </h2>
           </div>
@@ -163,6 +171,7 @@ export function CredentialsVault({ status, savedUsername }: CredentialsVaultProp
               autoComplete="username"
               maxLength={120}
               defaultValue={savedUsername ?? ""}
+              placeholder="YYYYXXXXXXXX"
               required
             />
           </label>
@@ -175,6 +184,7 @@ export function CredentialsVault({ status, savedUsername }: CredentialsVaultProp
                 type="password"
                 autoComplete="current-password"
                 maxLength={256}
+                placeholder="Pmu67tlo"
                 required
               />
               <button
