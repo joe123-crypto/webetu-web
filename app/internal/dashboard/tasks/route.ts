@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
         userId: result.userId,
         lastRunStatus: typeof body.lastRunStatus === "string" ? body.lastRunStatus : null,
         lastRunSummary: typeof body.lastRunSummary === "string" ? body.lastRunSummary : null,
+        results: result.results,
       }).catch(() => {
         // already swallowed inside sendReservationResultEmail, but be safe
       });
