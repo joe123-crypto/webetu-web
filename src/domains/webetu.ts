@@ -148,6 +148,44 @@ export async function getWebetuPreferencesForUid(uid: string) {
   return webetuPreferencesFromData(doc.data());
 }
 
+// Per-user ONOU location (wilaya/residence) the worker discovered from the
+// student's Webetu account. Cached in webetuMetadata/{uid} so later restaurant
+// lookups can pass it through and skip re-discovery. Returns null when nothing
+// usable is saved yet.
+export async function getWebetuMetadataForUid(
+  uid: string
+): Promise<{ wilaya: string; residence: number } | null> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const doc = await db.collection("webetuMetadata").doc(safeUid).get();
+  const data = doc.data();
+  if (!data || !data.wilaya || data.residence == null) return null;
+  const residence = Number(data.residence);
+  if (!Number.isInteger(residence)) return null;
+  return { wilaya: String(data.wilaya), residence };
+}
+
+export async function saveWebetuMetadataForUid(
+  uid: string,
+  metadata: { wilaya: string; residence: number }
+): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  const wilaya = String(metadata.wilaya ?? "").trim();
+  const residence = Number(metadata.residence);
+  if (!wilaya || !Number.isInteger(residence)) return;
+  const db = getFirestoreDb();
+  await db.collection("webetuMetadata").doc(safeUid).set(
+    {
+      userId: safeUid,
+      wilaya,
+      residence,
+      discoveredAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 // Whether the user has explicitly chosen a default restaurant. Unlike
 // getWebetuPreferencesForUid, this does not count the fallback restaurant.
 export async function hasSavedWebetuDefaultRestaurant(uid: string): Promise<boolean> {
