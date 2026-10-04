@@ -60,6 +60,7 @@ or corrupting data. It never deletes anything from the source project.
 | `webetuOverrides` | All docs |
 | `webetuRestaurants` | All docs |
 | `webetuCatalogMeta` | All docs |
+| `webetuMetadata` | All docs — each user's discovered ONOU location (`wilaya`/`residence`) |
 | `users` | Only users that have a webetu `credentialRef` or `services.webetu` set to an active/historical value |
 
 ### Collections intentionally skipped
@@ -115,3 +116,36 @@ After import, spot-check a few accounts in the Firebase console
 (**Authentication → Users**) to confirm UIDs, emails, and sign-in providers
 transferred correctly. UIDs must match the Firestore `users` document ids
 copied by the migration script.
+
+---
+
+## check-user-restaurants.mjs
+
+Read-only diagnostic for "why does this user see these restaurants?". Takes a
+uid or an email address and prints, for that one user:
+
+- the cached ONOU location (`webetuMetadata/{uid}`) with its `discoveredAt` /
+  `updatedAt`, whether the stored pair is usable, and whether it is past its
+  re-verification window;
+- the live restaurant list from the worker read-API, fetched the way
+  `app/webetu/restaurants/live/route.ts` fetches it — passing the cached
+  location through — plus the location the worker resolved and its
+  `wilayaSource`;
+- the saved `webetuPreferences/{uid}` default and per-date overrides, and a
+  cross-check of the `webetuOverrides` docs.
+
+```sh
+node scripts/check-user-restaurants.mjs user@example.com
+node scripts/check-user-restaurants.mjs <uid>
+```
+
+Required: `FIREBASE_SERVICE_ACCOUNT_JSON_BASE64`, `FIREBASE_PROJECT_ID`.
+Optional (enables the live list): `WEBETU_API_BASE_URL`,
+`WEBETU_INTERNAL_API_KEY`. All are read from `.env` or the environment.
+
+The script never writes. A wrong `webetuMetadata` entry is the usual cause of a
+wrong restaurant list. It is cleared when the user re-saves or revokes their
+Webetu credentials in Settings, and is re-verified against Webetu once it passes
+`WEBETU_LOCATION_TTL_MS` (30 days, `src/lib/utils.ts`) — reusing a saved location
+makes the worker answer `override` without re-checking, so that window is what
+lets a wrong entry be corrected.
