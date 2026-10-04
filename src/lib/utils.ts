@@ -203,6 +203,74 @@ export function liveWebetuRestaurantFromPayload(input: any) {
   };
 }
 
+// The student's ONOU location (wilaya code + residence id), as cached per user so
+// the worker can skip its Webetu enrichment round-trips. Shared by the Firestore
+// read/write helpers and by the live-restaurants route.
+export type WebetuLocation = { wilaya: string; residence: number };
+
+// Normalize a wilaya/residence pair, or null when it is not usable. A wilaya is an
+// Algerian code (1-3 digits, commonly zero-padded); a residence id is a positive
+// integer, mirroring the `idDepot > 0` check above. Used on the way into Firestore
+// and on the way back out, so a junk document can neither be written nor sent on to
+// the worker as a query param.
+export function webetuLocation(wilaya: unknown, residence: unknown): WebetuLocation | null {
+  if (wilaya == null || residence == null) return null;
+  const code = String(wilaya).trim();
+  if (!/^[0-9]{1,3}$/.test(code)) return null;
+  const id = Number(residence);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  return { wilaya: code, residence: id };
+}
+
+// How long a cached location is reused before it is re-verified. Sending a saved
+// location makes the worker skip discovery and answer "override", so a saved value
+// is self-confirming: without a window like this, a wrong entry — including one
+// written by the earlier provenance bug — would be pinned to the user forever.
+// Re-verifying costs one user a handful of Webetu calls once a month.
+export const WEBETU_LOCATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Whether a cached location is due for re-verification. An unknown timestamp counts
+// as stale, so a document written before this field existed gets re-checked once.
+export function webetuLocationIsStale(
+  verifiedAtMs: number | null | undefined,
+  now: number = Date.now()
+): boolean {
+  if (typeof verifiedAtMs !== "number" || !Number.isFinite(verifiedAtMs)) return true;
+  return now - verifiedAtMs >= WEBETU_LOCATION_TTL_MS;
+}
+
+// Decide whether a worker read-API response carries a location worth persisting for
+// this user, given the location we reused for the request (null when we had none, or
+// deliberately didn't reuse a stale one). Returns the location to save, or null to
+// leave Firestore alone.
+//
+// Only a location the worker read back from Webetu on that very call (`wilayaSource:
+// "discovered"`) is saved: its other labels mean the value came from the worker's own
+// hardcoded Algiers fallback, its local cache, or the override we just sent, none of
+// which is evidence about where this student actually is. When we reused nothing, a
+// discovered location is always written — even if it matches what is on file — so a
+// re-verification refreshes the timestamp instead of re-discovering on every request.
+//
+// Kept here as a pure function so it is unit-testable without standing up auth and
+// Firestore, which is also why liveRestaurantFromWorkerEntry lives in this file.
+export function webetuLocationToPersist(
+  body: any,
+  reused: WebetuLocation | null
+): WebetuLocation | null {
+  if (!body || typeof body !== "object") return null;
+  if (body.wilayaSource !== "discovered") return null;
+  const discovered = webetuLocation(body.wilaya, body.residence);
+  if (!discovered) return null;
+  if (
+    reused &&
+    reused.wilaya === discovered.wilaya &&
+    reused.residence === discovered.residence
+  ) {
+    return null;
+  }
+  return discovered;
+}
+
 // Map one restaurant from the worker read-API ({ idDepot, name, nameAR, nameFR, meals })
 // into the shape the preferences save path accepts. Normalizes through
 // liveWebetuRestaurantFromPayload, so anything returned here is guaranteed saveable;

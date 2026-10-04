@@ -12,7 +12,10 @@ import {
   storedRestaurantFields,
   liveWebetuRestaurantFromPayload,
   webetuRestaurantOverrideId,
+  webetuLocation,
+  webetuLocationIsStale,
   WEBETU_FALLBACK_RESTAURANT,
+  type WebetuLocation,
 } from "@/src/lib/utils";
 import { encryptCentralSecret, decryptCentralSecret } from "@/src/security/crypto";
 
@@ -62,8 +65,13 @@ export async function saveWebetuCredentials(uid: string, body: any) {
   const secret = encryptCentralSecret(creds, refId);
   const credsRef = db.collection("credentialRefs").doc(refId);
   const centralRef = db.collection("users").doc(safeUid);
+  // These credentials may belong to a different Webetu account than the one the
+  // cached ONOU location was discovered from, so drop it and let the next
+  // restaurant lookup re-discover.
+  const metadataRef = db.collection("webetuMetadata").doc(safeUid);
   await db.runTransaction(async (t) => {
     const doc = await t.get(centralRef);
+    t.delete(metadataRef);
     t.set(credsRef, {
       userId: safeUid,
       service: "webetu",
@@ -101,9 +109,13 @@ export async function revokeWebetuCredentials(uid: string) {
   const refId = webetuCredentialRefId(safeUid);
   const credsRef = db.collection("credentialRefs").doc(refId);
   const centralRef = db.collection("users").doc(safeUid);
+  // The location was discovered from the account being disconnected; don't keep it
+  // for whichever account is connected next.
+  const metadataRef = db.collection("webetuMetadata").doc(safeUid);
   await db.runTransaction(async (t) => {
     const doc = await t.get(credsRef);
     const userDoc = await t.get(centralRef);
+    t.delete(metadataRef);
     if (doc.exists) {
       t.update(credsRef, {
         status: "revoked",
@@ -151,39 +163,48 @@ export async function getWebetuPreferencesForUid(uid: string) {
 // Per-user ONOU location (wilaya/residence) the worker discovered from the
 // student's Webetu account. Cached in webetuMetadata/{uid} so later restaurant
 // lookups can pass it through and skip re-discovery. Returns null when nothing
-// usable is saved yet.
+// usable is saved yet — including when the stored pair is malformed, since this
+// value is forwarded to the worker, which books against it. `stale` marks a location
+// due for re-verification; callers should stop reusing it then, so the worker
+// re-discovers and a wrong entry can be corrected.
 export async function getWebetuMetadataForUid(
   uid: string
-): Promise<{ wilaya: string; residence: number } | null> {
+): Promise<(WebetuLocation & { stale: boolean }) | null> {
   const safeUid = validateFirebaseUid(uid);
   const db = getFirestoreDb();
   const doc = await db.collection("webetuMetadata").doc(safeUid).get();
   const data = doc.data();
-  if (!data || !data.wilaya || data.residence == null) return null;
-  const residence = Number(data.residence);
-  if (!Number.isInteger(residence)) return null;
-  return { wilaya: String(data.wilaya), residence };
+  if (!data) return null;
+  const location = webetuLocation(data.wilaya, data.residence);
+  if (!location) return null;
+  const verifiedAtMs =
+    typeof data.updatedAt?.toMillis === "function" ? data.updatedAt.toMillis() : null;
+  return { ...location, stale: webetuLocationIsStale(verifiedAtMs) };
 }
 
 export async function saveWebetuMetadataForUid(
   uid: string,
-  metadata: { wilaya: string; residence: number }
+  metadata: WebetuLocation
 ): Promise<void> {
   const safeUid = validateFirebaseUid(uid);
-  const wilaya = String(metadata.wilaya ?? "").trim();
-  const residence = Number(metadata.residence);
-  if (!wilaya || !Number.isInteger(residence)) return;
+  const location = webetuLocation(metadata?.wilaya, metadata?.residence);
+  if (!location) return;
   const db = getFirestoreDb();
-  await db.collection("webetuMetadata").doc(safeUid).set(
-    {
-      userId: safeUid,
-      wilaya,
-      residence,
-      discoveredAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const ref = db.collection("webetuMetadata").doc(safeUid);
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(ref);
+    t.set(
+      ref,
+      {
+        userId: safeUid,
+        ...location,
+        // First discovery only; a later correction moves updatedAt instead.
+        ...(doc.exists ? {} : { discoveredAt: FieldValue.serverTimestamp() }),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
 }
 
 // Whether the user has explicitly chosen a default restaurant. Unlike

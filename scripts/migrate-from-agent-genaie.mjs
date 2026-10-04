@@ -160,6 +160,18 @@ async function migrate() {
   log(`  -> ${metaCount} doc(s)`);
 
   // -------------------------------------------------------------------------
+  // 4c. webetuMetadata — all docs. Each holds a user's discovered ONOU location
+  //     (wilaya/residence). Not copying it is recoverable — the next restaurant
+  //     lookup re-discovers — but it costs every user the enrichment round-trips
+  //     again, so bring it along.
+  // -------------------------------------------------------------------------
+  log("\n[4c] webetuMetadata (all docs)");
+  const locSnap = await getCollection(srcDb, "webetuMetadata");
+  const locCount = await copySnapshot(locSnap, "webetuMetadata");
+  summary.webetuMetadata = locCount;
+  log(`  -> ${locCount} doc(s)`);
+
+  // -------------------------------------------------------------------------
   // 5. users — only those with a webetu credentialRef OR services.webetu set
   //    Strategy: we have the uid set from step 1; additionally query users
   //    where services.webetu is not "not_subscribed" / "not_connected".

@@ -6,7 +6,7 @@ import {
   getWebetuMetadataForUid,
   saveWebetuMetadataForUid,
 } from "@/src/domains/webetu";
-import { liveRestaurantFromWorkerEntry } from "@/src/lib/utils";
+import { liveRestaurantFromWorkerEntry, webetuLocationToPersist } from "@/src/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -16,23 +16,32 @@ const FETCH_TIMEOUT_MS = 10_000;
 // null on any failure (unconfigured, unreachable, non-ok, empty) so the caller can
 // fall back to the static catalog. Never leaks the key or backend URL to the client.
 //
-// Caches the user's ONOU location: when webetuMetadata/{uid} already holds a
-// wilaya/residence we pass it to the worker so it skips re-discovery; when it
-// doesn't, we persist what the worker discovers (only genuinely discovered values,
-// not its default fallback) so subsequent calls can reuse it.
+// Caches the user's ONOU location: when webetuMetadata/{uid} holds a fresh
+// wilaya/residence we pass it to the worker so it skips re-discovery, and we save
+// what the worker genuinely discovers (see webetuLocationToPersist). A location past
+// its re-verification window is deliberately *not* reused: sending it makes the
+// worker answer "override" without checking anything, so reusing it forever is how a
+// wrong entry would become permanent.
+//
+// Everything here stays inside the try: the Firestore read and `new URL` can both
+// throw — on a malformed WEBETU_API_BASE_URL the guard below only checks that the
+// value is non-empty — and this function promises null rather than an exception, so
+// a misconfigured backend serves the static catalog instead of a 500.
 async function fetchLiveRestaurants(uid: string) {
   if (!config.webetuApiBaseUrl || !config.internalApiKey) return null;
 
-  const saved = await getWebetuMetadataForUid(uid).catch(() => null);
-  const url = new URL(
-    `${config.webetuApiBaseUrl}/api/webetu/users/${encodeURIComponent(uid)}/restaurants`
-  );
-  if (saved) {
-    url.searchParams.set("wilaya", saved.wilaya);
-    url.searchParams.set("residence", String(saved.residence));
-  }
-
   try {
+    const saved = await getWebetuMetadataForUid(uid).catch(() => null);
+    const reused =
+      saved && !saved.stale ? { wilaya: saved.wilaya, residence: saved.residence } : null;
+    const url = new URL(
+      `${config.webetuApiBaseUrl}/api/webetu/users/${encodeURIComponent(uid)}/restaurants`
+    );
+    if (reused) {
+      url.searchParams.set("wilaya", reused.wilaya);
+      url.searchParams.set("residence", String(reused.residence));
+    }
+
     const res = await fetch(url, {
       method: "GET",
       headers: { Authorization: `Bearer ${config.internalApiKey}` },
@@ -42,14 +51,15 @@ async function fetchLiveRestaurants(uid: string) {
     const body = await res.json().catch(() => null);
     if (!body || body.ok === false || !Array.isArray(body.restaurants)) return null;
 
-    // Persist the discovered location on first successful discovery so later
-    // lookups reuse it. Skip the worker's default fallback to avoid pinning a
-    // wrong location for non-Algiers users.
-    if (!saved && body.wilayaSource === "discovered" && body.wilaya && body.residence != null) {
-      await saveWebetuMetadataForUid(uid, {
-        wilaya: String(body.wilaya),
-        residence: Number(body.residence),
-      }).catch(() => {});
+    const location = webetuLocationToPersist(body, reused);
+    if (location) {
+      await saveWebetuMetadataForUid(uid, location).catch(() => {});
+    } else if (!reused && body.wilayaSource === "default") {
+      // We asked the worker to discover and it fell back to its own hardcoded
+      // location, so this user is being served another wilaya's restaurants.
+      // Nothing is cached (correctly), but say so: otherwise a discovery
+      // regression looks like a working list.
+      console.warn("[webetu] worker could not discover this user's ONOU location");
     }
 
     const restaurants = body.restaurants.map(liveRestaurantFromWorkerEntry).filter(Boolean);
