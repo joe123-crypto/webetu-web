@@ -73,7 +73,8 @@ const vaultScript = `
   webetuForm.addEventListener("submit", async function(event) {
     event.preventDefault();
     setBusy(true);
-    setMessage(webetuMessage, "", "info");
+    // Saving now includes a real Webetu login check, so tell the user we're verifying.
+    setMessage(webetuMessage, "Verifying your Webetu credentials…", "info");
     try {
       await readJson(await fetch("/webetu/credentials", {
         method: "POST",
