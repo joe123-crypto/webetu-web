@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Settings, Utensils, Home } from "lucide-react";
+import { Check, Settings, Utensils } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   CREDENTIALS_STATUS_EVENT,
@@ -29,11 +29,6 @@ const STEPS: ReadonlyArray<OnboardingStep> = [
     hint: "Choose the default restaurant for your daily meal reservations.",
     pending: "Select a restaurant to continue.",
     icon: Utensils,
-  },
-  {
-    label: "Overview",
-    hint: "You're all set. Open your dashboard to review your reservation status.",
-    icon: Home,
   },
 ];
 
@@ -187,22 +182,24 @@ export function OnboardingGuide({ step, publicUserId, ready: initialReady }: Onb
         ) : (
           <span />
         )}
-        {isLast ? (
-          <button className="onboarding-guide-next" type="button" onClick={handleFinish} disabled={busy}>
-            {busy ? "Finishing…" : "Finish & go to dashboard"}
-          </button>
-        ) : ready ? (
-          <a className="onboarding-guide-next" href={stepHref(current + 1)}>
-            Next
-          </a>
+        {ready ? (
+          isLast ? (
+            <button className="onboarding-guide-next" type="button" onClick={handleFinish} disabled={busy}>
+              {busy ? "Finishing…" : "Finish & go to dashboard"}
+            </button>
+          ) : (
+            <a className="onboarding-guide-next" href={stepHref(current + 1)}>
+              Next
+            </a>
+          )
         ) : (
           <button className="onboarding-guide-next" type="button" disabled aria-describedby="onboarding-guide-pending">
-            Next
+            {isLast ? "Finish & go to dashboard" : "Next"}
           </button>
         )}
       </div>
 
-      {!isLast && !ready && currentStep.pending ? (
+      {!ready && currentStep.pending ? (
         <p id="onboarding-guide-pending" className="onboarding-guide-pending">
           {currentStep.pending}
         </p>
