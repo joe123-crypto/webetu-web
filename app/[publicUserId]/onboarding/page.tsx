@@ -81,18 +81,8 @@ export default async function OnboardingPage({
   if (step === 1) {
     const savedUsername = await getWebetuUsername(uid).catch(() => null);
     stepBody = <CredentialsVault status={webetuStatus} savedUsername={savedUsername} />;
-  } else if (step === 2) {
-    stepBody = <RestaurantPicker requireExplicitChoice hasSavedDefault={progress.restaurantChosen} />;
   } else {
-    stepBody = (
-      <section className="panel panel-narrow onboarding-finish">
-        <h2 className="panel-title">You&rsquo;re ready to go</h2>
-        <p>
-          Your credentials and restaurant are set. Open your dashboard to track your
-          reservation runs and status any time.
-        </p>
-      </section>
-    );
+    stepBody = <RestaurantPicker requireExplicitChoice hasSavedDefault={progress.restaurantChosen} />;
   }
 
   return (

@@ -819,11 +819,6 @@ button.onboarding-sign-out:hover:not(:disabled) {
   min-width: 0;
 }
 
-.onboarding-finish p {
-  margin: 8px 0 0;
-  color: var(--text-secondary);
-}
-
 @media (max-width: 820px) {
   .onboarding-layout {
     grid-template-columns: minmax(0, 1fr);

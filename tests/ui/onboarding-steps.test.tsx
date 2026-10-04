@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   furthestReachableStep,
+  isOnboardingComplete,
   isStepComplete,
   parseOnboardingStep,
 } from "@/src/lib/onboarding";
@@ -20,7 +21,7 @@ describe("parseOnboardingStep", () => {
     expect(parseOnboardingStep("0")).toBe(1);
     expect(parseOnboardingStep("-4")).toBe(1);
     expect(parseOnboardingStep("2")).toBe(2);
-    expect(parseOnboardingStep("99")).toBe(3);
+    expect(parseOnboardingStep("99")).toBe(2);
   });
 });
 
@@ -31,12 +32,9 @@ describe("furthestReachableStep", () => {
     expect(furthestReachableStep({ credentialsSaved: false, restaurantChosen: true })).toBe(1);
   });
 
-  it("unlocks restaurants once credentials are saved", () => {
+  it("unlocks the restaurants step once credentials are saved", () => {
     expect(furthestReachableStep(credentialsOnly)).toBe(2);
-  });
-
-  it("unlocks the overview once both are done", () => {
-    expect(furthestReachableStep(allDone)).toBe(3);
+    expect(furthestReachableStep(allDone)).toBe(2);
   });
 });
 
@@ -47,8 +45,12 @@ describe("isStepComplete", () => {
     expect(isStepComplete(2, credentialsOnly)).toBe(false);
     expect(isStepComplete(2, allDone)).toBe(true);
   });
+});
 
-  it("treats the final step as having nothing left to do", () => {
-    expect(isStepComplete(3, allDone)).toBe(true);
+describe("isOnboardingComplete", () => {
+  it("requires both credentials and a chosen restaurant", () => {
+    expect(isOnboardingComplete(nothingDone)).toBe(false);
+    expect(isOnboardingComplete(credentialsOnly)).toBe(false);
+    expect(isOnboardingComplete(allDone)).toBe(true);
   });
 });

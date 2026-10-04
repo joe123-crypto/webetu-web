@@ -22,7 +22,7 @@ describe("OnboardingGuide", () => {
     expect(current).toHaveClass("is-current");
     expect(current).toHaveAttribute("aria-current", "step");
     expect(screen.getByText("Settings", { selector: ".onboarding-guide-step-label" }).closest("li")).toHaveClass("is-done");
-    expect(screen.getByText("Overview", { selector: ".onboarding-guide-step-label" }).closest("li")).toHaveClass("is-upcoming");
+    expect(screen.queryByText("Overview", { selector: ".onboarding-guide-step-label" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Restaurants" })).toBeInTheDocument();
   });
 
@@ -41,18 +41,20 @@ describe("OnboardingGuide", () => {
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
   });
 
-  it("unlocks Next on restaurants once a restaurant is selected", () => {
+  it("gates finishing on the restaurants step until a restaurant is selected", () => {
     render(<OnboardingGuide step={2} publicUserId="abc123" ready={false} />);
 
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    const finishName = "Finish & go to dashboard";
+    expect(screen.getByRole("button", { name: finishName })).toBeDisabled();
+    expect(screen.getByText("Select a restaurant to continue.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/abc123/onboarding?step=1");
 
     // Credential events don't belong to this step.
     dispatch(CREDENTIALS_STATUS_EVENT, { configured: true });
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: finishName })).toBeDisabled();
 
     dispatch(RESTAURANT_SELECTED_EVENT);
-    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/abc123/onboarding?step=3");
+    expect(screen.getByRole("button", { name: finishName })).toBeEnabled();
   });
 
   it("enables Next immediately when the step was already done", () => {
@@ -81,7 +83,7 @@ describe("OnboardingGuide", () => {
     expect(assign).toHaveBeenCalledWith("/abc123/onboarding?step=2");
     unmount();
 
-    // The final step has no requirement, so it finishes and opens the dashboard.
+    // The final step (restaurants) finishes and opens the dashboard once ready.
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -89,7 +91,7 @@ describe("OnboardingGuide", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    render(<OnboardingGuide step={3} publicUserId="abc123" ready />);
+    render(<OnboardingGuide step={2} publicUserId="abc123" ready />);
     await act(async () => {});
     expect(fetchMock).toHaveBeenCalledWith(
       "/webetu/onboarding/complete",
@@ -108,7 +110,7 @@ describe("OnboardingGuide", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<OnboardingGuide step={3} publicUserId="abc123" ready />);
+    render(<OnboardingGuide step={2} publicUserId="abc123" ready />);
     const finish = screen.getByRole("button", { name: "Finish & go to dashboard" });
     await act(async () => {
       fireEvent.click(finish);

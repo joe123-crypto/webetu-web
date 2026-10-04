@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyFirebaseRequest } from "@/src/security/session";
 import { getOnboardingProgress, markOnboardingCompleted } from "@/src/domains/users";
-import { ONBOARDING_TOTAL_STEPS, furthestReachableStep } from "@/src/lib/onboarding";
+import { isOnboardingComplete } from "@/src/lib/onboarding";
 
 export const runtime = "nodejs";
 
@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   try {
     const decoded = await verifyFirebaseRequest(req);
     const progress = await getOnboardingProgress(decoded.uid);
-    if (furthestReachableStep(progress) < ONBOARDING_TOTAL_STEPS) {
+    if (!isOnboardingComplete(progress)) {
       return NextResponse.json(
         { ok: false, error: "Save your Webetu credentials and choose a restaurant before finishing." },
         { status: 409 }
