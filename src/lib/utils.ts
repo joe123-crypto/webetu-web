@@ -114,6 +114,50 @@ export function normalizeWebetuCredentials(input: any = {}) {
   return { username, password };
 }
 
+// Verifying credentials makes our server attempt a Webetu login on the caller's behalf,
+// which would otherwise let a signed-in user brute-force arbitrary Webetu accounts
+// through us. Cap how often one user may do that.
+export const WEBETU_VERIFY_WINDOW_MS = 10 * 60 * 1000;
+export const WEBETU_VERIFY_MAX_ATTEMPTS = 10;
+
+export type WebetuVerifyThrottleDecision = {
+  allowed: boolean;
+  // Attempt count to persist for the current window (1 when the window rolled over).
+  count: number;
+  // True when this attempt starts a fresh window, so the caller resets windowStart.
+  windowReset: boolean;
+};
+
+// Decide whether one more verify attempt is allowed, given the stored window. Pure so
+// the rollover/limit logic is testable without Firestore. A missing or malformed
+// windowStartMs is treated as "no window yet" and starts a fresh one.
+export function webetuVerifyThrottleDecision(input: {
+  now: number;
+  windowStartMs?: number | null;
+  count?: number | null;
+}): WebetuVerifyThrottleDecision {
+  const { now } = input;
+  const windowStartMs =
+    typeof input.windowStartMs === "number" && Number.isFinite(input.windowStartMs)
+      ? input.windowStartMs
+      : null;
+  const stored =
+    typeof input.count === "number" && Number.isFinite(input.count) && input.count > 0
+      ? Math.floor(input.count)
+      : 0;
+
+  // No window yet, or the previous one has elapsed: this attempt starts a new one.
+  // A windowStart in the future (clock skew) also rolls over rather than locking out.
+  const expired =
+    windowStartMs === null || now - windowStartMs >= WEBETU_VERIFY_WINDOW_MS || now < windowStartMs;
+  if (expired) return { allowed: true, count: 1, windowReset: true };
+
+  if (stored >= WEBETU_VERIFY_MAX_ATTEMPTS) {
+    return { allowed: false, count: stored, windowReset: false };
+  }
+  return { allowed: true, count: stored + 1, windowReset: false };
+}
+
 export type WebetuVerifyVerdict = "valid" | "invalid" | "unavailable" | "skip";
 
 // Map a Webetu worker verify-credentials response (or a skip signal) to a verdict

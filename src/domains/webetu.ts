@@ -14,6 +14,7 @@ import {
   webetuRestaurantOverrideId,
   webetuLocation,
   webetuLocationIsStale,
+  webetuVerifyThrottleDecision,
   WEBETU_FALLBACK_RESTAURANT,
   type WebetuLocation,
 } from "@/src/lib/utils";
@@ -55,6 +56,78 @@ export async function getWebetuUsername(uid: string): Promise<string | null> {
   const creds = decryptCentralSecret(data.secret, refId);
   const username = creds?.username;
   return typeof username === "string" && username ? username : null;
+}
+
+// Per-user rate limit for credential verification. Verifying makes our backend attempt a
+// Webetu login with whatever pair the caller supplies, so without a cap a signed-in user
+// could brute-force other students' Webetu accounts through our server. Counted in
+// webetuVerifyAttempts/{uid} as a fixed window.
+//
+// Throws 429 when the window's budget is spent. The caller consumes an attempt only when
+// a real verification is about to happen (never when verification is skipped), and calls
+// resetWebetuVerifyAttempts after a success so an honest user who mistyped is not left
+// throttled.
+export async function consumeWebetuVerifyAttempt(uid: string): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const ref = db.collection("webetuVerifyAttempts").doc(safeUid);
+  const now = Date.now();
+
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(ref);
+    const data = doc.data() || {};
+    const decision = webetuVerifyThrottleDecision({
+      now,
+      windowStartMs: data.windowStartAt?.toMillis?.() ?? null,
+      count: typeof data.count === "number" ? data.count : null,
+    });
+    if (!decision.allowed) {
+      throw httpError(
+        429,
+        "Too many verification attempts. Please wait a few minutes and try again."
+      );
+    }
+    t.set(
+      ref,
+      {
+        userId: safeUid,
+        count: decision.count,
+        ...(decision.windowReset
+          ? { windowStartAt: FieldValue.serverTimestamp() }
+          : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+}
+
+// Clear a user's verify budget after a confirmed-good login, so earlier typos do not
+// count against someone who has demonstrably supplied working credentials.
+export async function resetWebetuVerifyAttempts(uid: string): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  await db.collection("webetuVerifyAttempts").doc(safeUid).delete();
+}
+
+// Give an attempt back when verification produced no verdict (worker down, timeout).
+// The budget exists to stop brute-forcing, and an attempt that returns no valid/invalid
+// signal tells an attacker nothing -- so charging for it only punishes real users during
+// an outage. Decrements rather than clearing, so a forced failure can't wipe the budget.
+export async function refundWebetuVerifyAttempt(uid: string): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const ref = db.collection("webetuVerifyAttempts").doc(safeUid);
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(ref);
+    if (!doc.exists) return;
+    const current = doc.data()?.count;
+    if (typeof current !== "number" || current <= 0) return;
+    t.update(ref, {
+      count: Math.max(0, current - 1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
 }
 
 export async function saveWebetuCredentials(uid: string, body: any) {
