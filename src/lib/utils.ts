@@ -114,6 +114,28 @@ export function normalizeWebetuCredentials(input: any = {}) {
   return { username, password };
 }
 
+export type WebetuVerifyVerdict = "valid" | "invalid" | "unavailable" | "skip";
+
+// Map a Webetu worker verify-credentials response (or a skip signal) to a verdict
+// the save route acts on. Pure + exported so the save-vs-block decision is unit
+// tested without a live worker.
+//   - "skip":        verification is not configured (no worker) -> save as before.
+//   - "valid":       the worker confirmed a successful Webetu login -> save.
+//   - "invalid":     the worker got a definitive auth rejection -> block, "No such user".
+//   - "unavailable": any other shape (non-ok, transient, malformed) -> block, retry.
+// A non-definitive result is deliberately "unavailable", never "valid": we only
+// save credentials we could actually confirm.
+export function classifyVerifyResponse(
+  input: { skip?: boolean; ok?: boolean; valid?: unknown } | null | undefined
+): WebetuVerifyVerdict {
+  if (!input) return "unavailable";
+  if (input.skip) return "skip";
+  if (input.ok !== true) return "unavailable";
+  if (input.valid === true) return "valid";
+  if (input.valid === false) return "invalid";
+  return "unavailable";
+}
+
 export function normalizeRestaurantLookup(value: unknown) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
