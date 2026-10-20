@@ -5236,14 +5236,16 @@ button.backend-status-recheck {
   gap: 14px;
 }
 
-/* On a phone the dot carries the whole signal; the wording stays in the
-   button's accessible name and in the popover. */
+/* On a phone the dot carries the healthy state on its own, and the wording
+   stays in the button's accessible name and in the popover. An outage is the
+   exception: a lone amber dot does not tell anyone the server is down, so the
+   badge expands to the full label there, as it does on desktop. */
 @media (max-width: 560px) {
-  .backend-status-label {
+  .backend-status:not([data-status="offline"]) .backend-status-label {
     display: none;
   }
 
-  button.backend-status {
+  button.backend-status:not([data-status="offline"]) {
     min-width: 32px;
     justify-content: center;
     padding: 0;
