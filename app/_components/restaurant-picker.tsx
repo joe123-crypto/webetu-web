@@ -1,3 +1,5 @@
+import { RefreshCw } from "lucide-react";
+
 import { StatusNotice, StatusPill } from "@/app/_components/status-ui";
 import { InfoHint } from "@/app/_components/info-hint";
 import { RESTAURANT_SELECTED_EVENT } from "@/src/lib/onboarding";
@@ -14,6 +16,7 @@ const pickerScript = `
   var restaurantMessage = document.querySelector("[data-restaurant-message]");
   var yourRestaurants = document.querySelector("[data-your-restaurants]");
   var yourRestaurantsMessage = document.querySelector("[data-your-restaurants-message]");
+  var refreshButton = document.querySelector("[data-your-restaurants-refresh]");
 
   if (!restaurantPanel && !yourRestaurants) return;
 
@@ -113,11 +116,13 @@ const pickerScript = `
   }
 
   // Your Restaurants panel: the user's live ONOU restaurants (falls back to catalog server-side)
-  async function loadYourRestaurants() {
+  // showPlaceholder is false for a manual refresh so the current options stay on
+  // screen while the request runs, instead of blanking out and jumping the layout.
+  async function loadYourRestaurants(showPlaceholder) {
     if (!yourRestaurants) return;
-    yourRestaurants.innerHTML = "<p>Loading restaurants…</p>";
+    if (showPlaceholder !== false) yourRestaurants.innerHTML = "<p>Loading restaurants…</p>";
     try {
-      var data = await readJson(await fetch("/webetu/restaurants/live", { method: "GET", credentials: "same-origin" }));
+      var data = await readJson(await fetch("/webetu/restaurants/live", { method: "GET", credentials: "same-origin", cache: "no-store" }));
       renderOptions(yourRestaurants, data.restaurants || []);
     } catch (err) {
       yourRestaurants.innerHTML = "<p>Could not load restaurants.</p>";
@@ -125,9 +130,35 @@ const pickerScript = `
     }
   }
 
+  // Manual refetch of the live list: the ONOU read-API can be slow or briefly
+  // unavailable, and without this the only way out of "Could not load restaurants."
+  // is a full page reload.
+  var isRefreshing = false;
+  async function refreshYourRestaurants() {
+    if (isRefreshing) return;
+    isRefreshing = true;
+    if (refreshButton) {
+      refreshButton.disabled = true;
+      refreshButton.dataset.loading = "true";
+    }
+    if (yourRestaurantsMessage) setMessage(yourRestaurantsMessage, "", "info");
+    try {
+      await loadYourRestaurants(false);
+      highlightSelection();
+    } finally {
+      isRefreshing = false;
+      if (refreshButton) {
+        refreshButton.disabled = false;
+        delete refreshButton.dataset.loading;
+      }
+    }
+  }
+
+  if (refreshButton) refreshButton.addEventListener("click", refreshYourRestaurants);
+
   async function loadRestaurants() {
     await loadPreferences();
-    await loadYourRestaurants();
+    await loadYourRestaurants(true);
     highlightSelection();
   }
 
@@ -181,6 +212,15 @@ export function RestaurantPicker({ requireExplicitChoice = false, hasSavedDefaul
               </InfoHint>
             </h2>
           </div>
+          <button
+            type="button"
+            className="restaurant-refresh"
+            data-your-restaurants-refresh
+            aria-label="Refresh restaurant list"
+            title="Refresh restaurant list"
+          >
+            <RefreshCw aria-hidden="true" />
+          </button>
         </div>
         <div data-your-restaurants className="restaurant-list">
           <p>Loading restaurants&hellip;</p>
