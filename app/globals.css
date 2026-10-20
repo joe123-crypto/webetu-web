@@ -634,7 +634,9 @@ textarea:focus-visible {
   max-width: 960px;
   min-height: 100svh;
   margin: 0 auto;
-  padding: 40px 24px 80px;
+  /* Top padding clears the pinned status badge, whose right edge would
+     otherwise clip the Sign out button. */
+  padding: 64px 24px 80px;
 }
 
 .onboarding-header {
@@ -2140,7 +2142,10 @@ button.password-toggle {
     gap: 18px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
-    padding: 20px;
+    /* The sidebar is a top bar here, and its right edge holds the nav trigger
+       and the avatar. The extra top padding keeps that row clear of the
+       status badge pinned to the corner. */
+    padding: 54px 20px 20px;
   }
 
   .dashboard-brand {
@@ -3048,7 +3053,10 @@ button.password-toggle {
     gap: 18px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
-    padding: 20px;
+    /* The sidebar is a top bar here, and its right edge holds the nav trigger
+       and the avatar. The extra top padding keeps that row clear of the
+       status badge pinned to the corner. */
+    padding: 54px 20px 20px;
   }
 
   .dashboard-brand {
@@ -5109,22 +5117,17 @@ button.landing-pricing-button {
    block above appears twice and the later copy wins, so rules placed in
    the middle of the file are easy to lose. */
 
+/* One rail for the whole app. The badge is rendered once in the root layout
+   and pinned here, so it keeps the same coordinates on every route. Layouts
+   whose own chrome reaches this corner reserve room for it below. The z-index
+   clears the dashboard sidebar (10) and its nav and account menus (30). */
 .status-rail {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
-}
-
-/* The centred login and policy layouts have empty space in the corner, so
-   the badge can be pinned there outright. The dashboard cannot do this:
-   below 820px its sidebar becomes a top bar whose right edge already holds
-   the nav trigger and the avatar. */
-.status-rail-floating {
   position: fixed;
   top: 14px;
   right: 18px;
-  z-index: 40;
-  margin-bottom: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .backend-status-wrap {
