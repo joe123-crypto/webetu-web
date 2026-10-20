@@ -19,6 +19,7 @@ import {
 } from "@/src/lib/onboarding";
 import { OnboardingGuide } from "@/app/_components/onboarding-guide";
 import { OnboardingSignOut } from "@/app/_components/onboarding-sign-out";
+import { BackendStatus } from "@/app/_components/backend-status";
 import { CredentialsVault } from "@/app/_components/credentials-vault";
 import { RestaurantPicker } from "@/app/_components/restaurant-picker";
 import { PARENT_BRAND, PARENT_LOGO_SRC, PRODUCT_NAME } from "@/src/lib/brand";
@@ -96,7 +97,10 @@ export default async function OnboardingPage({
             <img src={PARENT_LOGO_SRC} alt={PARENT_BRAND} />
           </span>
         </div>
-        <OnboardingSignOut userLabel={userLabel} />
+        <div className="onboarding-header-actions">
+          <BackendStatus />
+          <OnboardingSignOut userLabel={userLabel} />
+        </div>
       </header>
 
       <div className="onboarding-layout">

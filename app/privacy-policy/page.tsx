@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/src/lib/site-metadata";
+import { BackendStatus } from "@/app/_components/backend-status";
 
 export const metadata: Metadata = pageMetadata({
   title: "AWRS | Privacy & Policy",
@@ -10,6 +11,9 @@ export const metadata: Metadata = pageMetadata({
 export default function PrivacyPolicyPage() {
   return (
     <main className="app-main policy-page">
+      <div className="status-rail status-rail-floating">
+        <BackendStatus />
+      </div>
       <div className="shell">
         <a className="toplink" href="/login">Back</a>
 
