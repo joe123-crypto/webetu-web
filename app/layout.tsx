@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { BackendStatus } from "@/app/_components/backend-status";
 import { SITE_IMAGE, SITE_NAME, SITE_URL } from "@/src/lib/site-metadata";
 import "./globals.css";
 
@@ -32,6 +33,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         {children}
+        {/* Rendered here, once, so the badge sits in the same viewport corner on
+            every route instead of each page placing its own copy. */}
+        <div className="status-rail">
+          <BackendStatus />
+        </div>
         <Analytics />
       </body>
     </html>

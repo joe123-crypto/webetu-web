@@ -3,7 +3,6 @@ import { pageMetadata } from "@/src/lib/site-metadata";
 import { Suspense } from "react";
 import { StatusNotice } from "@/app/_components/status-ui";
 import { LoginContent } from "@/app/login/login-content";
-import { BackendStatus } from "@/app/_components/backend-status";
 
 export const metadata: Metadata = pageMetadata({
   title: "AWRS | Sign In",
@@ -14,9 +13,6 @@ export const metadata: Metadata = pageMetadata({
 export default function LoginPage() {
   return (
     <>
-      <div className="status-rail status-rail-floating">
-        <BackendStatus />
-      </div>
       <Suspense fallback={<main className="app-main app-main-center"><StatusNotice kind="loading" variant="block">Loading...</StatusNotice></main>}>
         <LoginContent />
       </Suspense>

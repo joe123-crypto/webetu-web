@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { BackendStatus } from "@/app/_components/backend-status";
 import { DashboardAccountMenu } from "@/app/_components/dashboard-account-menu";
 import { DashboardNavMenu, type DashboardSection } from "@/app/_components/dashboard-nav-menu";
 import {
@@ -41,12 +40,7 @@ export function DashboardShell({
           <DashboardAccountMenu userLabel={userLabel} />
         </div>
       </aside>
-      <section className="dashboard-content">
-        <div className="status-rail">
-          <BackendStatus />
-        </div>
-        {children}
-      </section>
+      <section className="dashboard-content">{children}</section>
     </main>
   );
 }
