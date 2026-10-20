@@ -5103,3 +5103,149 @@ button.landing-pricing-button {
     animation: none;
   }
 }
+
+/* ── Backend reachability indicator ─────────────────────────────────────
+   Appended at the end of the file on purpose: the "Signed-in dashboard"
+   block above appears twice and the later copy wins, so rules placed in
+   the middle of the file are easy to lose. */
+
+.status-rail {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+/* The centred login and policy layouts have empty space in the corner, so
+   the badge can be pinned there outright. The dashboard cannot do this:
+   below 820px its sidebar becomes a top bar whose right edge already holds
+   the nav trigger and the avatar. */
+.status-rail-floating {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 40;
+  margin-bottom: 0;
+}
+
+.backend-status-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Overrides the global filled-pill button styling. */
+button.backend-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-nav);
+  line-height: 1;
+}
+
+button.backend-status:hover:not(:disabled),
+button.backend-status:focus-visible {
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
+.backend-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+/* Amber, not red: the server being briefly unreachable is expected, and red
+   would read as something the user did wrong. */
+.backend-status[data-status="offline"] .backend-status-dot {
+  background: var(--warning);
+}
+
+.backend-status[data-status="online"] .backend-status-dot {
+  background: var(--accent);
+}
+
+.backend-status[data-status="checking"] .backend-status-dot {
+  opacity: 0.45;
+}
+
+.backend-status-label {
+  white-space: nowrap;
+}
+
+.backend-status-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  display: grid;
+  width: min(260px, calc(100vw - 32px));
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  box-shadow: 0 12px 30px rgb(17 17 17 / 10%);
+  padding: 14px;
+  text-align: left;
+}
+
+.backend-status-popover[hidden] {
+  display: none;
+}
+
+.backend-status-popover-title {
+  margin: 0;
+  color: var(--text-heading);
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-utility);
+}
+
+.backend-status-popover-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.backend-status-popover-meta {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+button.backend-status-recheck {
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.75rem;
+}
+
+.onboarding-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+/* On a phone the dot carries the whole signal; the wording stays in the
+   button's accessible name and in the popover. */
+@media (max-width: 560px) {
+  .backend-status-label {
+    display: none;
+  }
+
+  button.backend-status {
+    min-width: 32px;
+    justify-content: center;
+    padding: 0;
+  }
+}
