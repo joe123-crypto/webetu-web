@@ -160,4 +160,47 @@ describe("RestaurantPicker", () => {
     await waitFor(() => expect(live("onou-depot-190")).toHaveAttribute("aria-pressed", "true"));
     expect(live("onou-depot-42")).toHaveAttribute("aria-pressed", "false");
   });
+
+  function refreshButton() {
+    return document.querySelector<HTMLButtonElement>("[data-your-restaurants-refresh]");
+  }
+
+  it("refetches the live list when the refresh button is clicked", async () => {
+    const fetchMock = stubRestaurantApi();
+    mountWithScript(<RestaurantPicker />);
+
+    await waitFor(() => expect(option("campus-a")).not.toBeNull());
+    const liveCalls = () => fetchMock.mock.calls.filter(([url]) => url === "/webetu/restaurants/live").length;
+    expect(liveCalls()).toBe(1);
+
+    fireEvent.click(refreshButton()!);
+
+    await waitFor(() => expect(liveCalls()).toBe(2));
+    expect(option("campus-a")).not.toBeNull();
+    // The saved default stays marked across the re-render.
+    expect(option("fallback")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("recovers from a failed load without a page reload", async () => {
+    let live = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/webetu/preferences") return json({ defaultRestaurant: null, overrides: {} });
+        if (url === "/webetu/restaurants/live") {
+          live += 1;
+          return live === 1 ? json({ error: "upstream unavailable" }, 502) : json({ restaurants: [chosen] });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+
+    mountWithScript(<RestaurantPicker />);
+    await waitFor(() => expect(pillLabel("[data-your-restaurants-message]")).toBe("upstream unavailable"));
+
+    fireEvent.click(refreshButton()!);
+
+    await waitFor(() => expect(option("campus-a")).not.toBeNull());
+    expect(pillLabel("[data-your-restaurants-message]")).toBe("");
+  });
 });
