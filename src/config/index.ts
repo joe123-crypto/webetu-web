@@ -1,6 +1,8 @@
 import fsSync from "node:fs";
 import path from "node:path";
 
+import { PRODUCT_NAME } from "@/src/lib/brand";
+
 const rootDir = process.cwd();
 
 export const GOOGLE_IDENTITY_SCOPES = "openid email profile";
@@ -61,7 +63,7 @@ export const config = {
   centralDataEncryptionSecret: process.env.CENTRAL_DATA_ENCRYPTION_SECRET ?? process.env.TOKEN_ENCRYPTION_SECRET ?? "",
   centralDataKeyVersion: process.env.CENTRAL_DATA_KEY_VERSION ?? "v1",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
-  emailFrom: process.env.EMAIL_FROM ?? "Webetu <no-reply@genaie.site>",
+  emailFrom: process.env.EMAIL_FROM ?? `${PRODUCT_NAME} <no-reply@genaie.site>`,
   smtpHost: process.env.SMTP_HOST ?? "",
   smtpPort: Number.parseInt(process.env.SMTP_PORT ?? "587", 10),
   smtpUser: process.env.SMTP_USER ?? "",
