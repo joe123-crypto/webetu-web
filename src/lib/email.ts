@@ -1,4 +1,5 @@
 import { config } from "@/src/config";
+import { PRODUCT_NAME } from "@/src/lib/brand";
 import { getFirebaseAdminAuth } from "@/src/firebase/admin";
 import { getWebetuEmailNotificationForUid } from "@/src/domains/webetu";
 import type { DashboardRunResult } from "@/src/domains/dashboard";
@@ -114,7 +115,7 @@ export function buildResultHtml(
     <p style="margin:0 0 8px;"><strong>Status:</strong> ${label}</p>
     ${detail}
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
-    <p style="font-size:12px;color:#9ca3af;">This is an automated notification from Webetu.</p>
+    <p style="font-size:12px;color:#9ca3af;">This is an automated notification from ${PRODUCT_NAME}.</p>
   </div>
 </body>
 </html>`.trim();
