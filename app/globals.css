@@ -5254,3 +5254,116 @@ button.backend-status-recheck {
     padding: 0;
   }
 }
+
+/* ── Developer WhatsApp contact ─────────────────────────────────────────
+   Appended at the end for the same reason as the block above: rules placed
+   mid-file sit behind the duplicated "Signed-in dashboard" block. */
+
+/* Docked once in the root layout, opposite the status rail. The z-index
+   clears the dashboard sidebar (10) and its menus (30), but stays under the
+   rail (60) so an open status popover is never covered by this button. */
+.whatsapp-rail {
+  position: fixed;
+  right: 18px;
+  bottom: 20px;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Overrides the global filled-pill button styling. */
+button.whatsapp-toggle {
+  display: inline-flex;
+  min-width: 28px;
+  min-height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  padding: 0;
+  color: var(--text-secondary);
+  box-shadow: 0 6px 16px rgb(17 17 17 / 8%);
+}
+
+button.whatsapp-toggle:hover:not(:disabled),
+button.whatsapp-toggle:focus-visible {
+  border-color: var(--text-secondary);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.whatsapp-toggle svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+
+/* The accent green is already within a shade of WhatsApp's own, so the dock
+   reads as part of the app rather than as a pasted-in brand badge. */
+.whatsapp-link {
+  display: inline-flex;
+  min-width: 48px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  padding: 0;
+  color: var(--text-inverse);
+  box-shadow: 0 12px 30px rgb(17 17 17 / 10%);
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.whatsapp-link:hover,
+.whatsapp-link:focus-visible {
+  background: color-mix(in srgb, var(--accent) 82%, black);
+  color: var(--text-inverse);
+}
+
+.whatsapp-rail[data-open="true"] .whatsapp-link {
+  justify-content: flex-start;
+  padding: 10px 14px 10px 18px;
+}
+
+.whatsapp-link svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
+.whatsapp-label {
+  max-width: min(280px, calc(100vw - 110px));
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-action);
+  line-height: 1.35;
+  text-align: left;
+}
+
+/* The flex parent would otherwise lay the label out despite `hidden`. */
+.whatsapp-label[hidden] {
+  display: none;
+}
+
+/* Tighter gutter on a phone, where the expanded sentence has to share the
+   width with the page behind it. */
+@media (max-width: 560px) {
+  .whatsapp-rail {
+    right: 12px;
+    bottom: 14px;
+  }
+
+  .whatsapp-label {
+    max-width: calc(100vw - 140px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whatsapp-link {
+    transition: none;
+  }
+}

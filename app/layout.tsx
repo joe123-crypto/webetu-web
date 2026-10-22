@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { BackendStatus } from "@/app/_components/backend-status";
+import { WhatsAppButton } from "@/app/_components/whatsapp-button";
 import { SITE_IMAGE, SITE_NAME, SITE_URL } from "@/src/lib/site-metadata";
 import "./globals.css";
 
@@ -38,6 +39,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="status-rail">
           <BackendStatus />
         </div>
+        {/* Same reasoning as the badge above: one copy, pinned to the opposite
+            corner, so help is in the same place on every route. */}
+        <WhatsAppButton />
         <Analytics />
       </body>
     </html>
