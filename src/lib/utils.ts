@@ -356,3 +356,158 @@ export function liveRestaurantFromWorkerEntry(entry: any) {
     return null;
   }
 }
+
+// Nobody tells the owner when the backend worker goes down -- the reachability probe in
+// app/health/route.ts only ever reaches the visitor's status badge. These helpers decide,
+// from the bookkeeping stored in Firestore, whether a failed probe is worth an email.
+//
+// Two thresholds, because either one alone is wrong:
+//
+//   * A count, so a single dropped request is not an outage. Matches the client badge's
+//     FAILURES_BEFORE_OFFLINE, so the owner's inbox and the visitor's badge agree on what
+//     "down" means.
+//   * A duration, because the count is shared across serverless instances and therefore
+//     traffic-dependent: under load two different visitors can push it to 2 within a
+//     second, which is a blip. The duration is what makes the debounce mean the same thing
+//     at any traffic level.
+export const BACKEND_ALERT_FAILURES_BEFORE_ALERT = 2;
+export const BACKEND_ALERT_MIN_OUTAGE_MS = 20_000;
+
+// Stored state older than this is not evidence about now. Alerting is visitor-triggered,
+// so after a quiet spell the doc can still hold an outage whose `alerted` flag no
+// successful probe ever cleared -- reusing it would mute a genuinely new outage for good
+// and report an invented multi-day duration. Past this age the record is discarded.
+export const BACKEND_ALERT_STALE_STATE_MS = 15 * 60_000;
+
+// Why a probe failed, in coarse buckets. The probe deliberately discards the underlying
+// error message: it can carry the worker's base URL or a resolved address, and these
+// values reach an email.
+export type BackendProbeReason =
+  | "ok"
+  | "not_configured"
+  | "timeout"
+  | "network_error"
+  | "bad_body"
+  | `http_${number}`;
+
+export type BackendAlertStoredState = {
+  consecutiveFailures?: number | null;
+  firstFailureAtMs?: number | null;
+  alerted?: boolean | null;
+  updatedAtMs?: number | null;
+};
+
+export type BackendAlertDecision = {
+  shouldAlert: boolean;
+  // Exactly what to persist; the caller writes these verbatim.
+  next: {
+    consecutiveFailures: number;
+    firstFailureAtMs: number | null;
+    alerted: boolean;
+  };
+  // Diagnostics for the email body.
+  outageStartedAtMs: number | null;
+  failureCount: number;
+};
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+// Decide whether this probe outcome warrants an email, given what is on record. Pure so
+// the threshold and staleness logic is testable without Firestore -- same split as
+// webetuVerifyThrottleDecision above.
+//
+// A reachable probe is what ends an outage: it clears the counters and the `alerted` flag,
+// which is what lets the *next* outage alert again. It never emails (the owner opted out
+// of recovery mail), but it must still be recorded.
+export function backendAlertDecision(input: {
+  now: number;
+  reachable: boolean;
+  stored?: BackendAlertStoredState | null;
+}): BackendAlertDecision {
+  const { now, reachable } = input;
+  const raw = input.stored ?? null;
+
+  // Discard the whole record when it is too old to describe the present, or when it is
+  // stamped in the future (clock skew). Treating it as absent restarts the narrative
+  // rather than inheriting a stale flag.
+  const updatedAtMs = finiteNumber(raw?.updatedAtMs);
+  const fresh =
+    raw !== null &&
+    updatedAtMs !== null &&
+    updatedAtMs <= now &&
+    now - updatedAtMs < BACKEND_ALERT_STALE_STATE_MS;
+  const stored = fresh ? raw : null;
+
+  const storedFailuresRaw = finiteNumber(stored?.consecutiveFailures);
+  const storedFailures =
+    storedFailuresRaw !== null && storedFailuresRaw > 0 ? Math.floor(storedFailuresRaw) : 0;
+  const alerted = stored?.alerted === true;
+  const storedFirstFailureAtMs = finiteNumber(stored?.firstFailureAtMs);
+
+  if (reachable) {
+    return {
+      shouldAlert: false,
+      next: { consecutiveFailures: 0, firstFailureAtMs: null, alerted: false },
+      outageStartedAtMs: storedFirstFailureAtMs,
+      failureCount: 0,
+    };
+  }
+
+  const failureCount = storedFailures + 1;
+  // A first-failure stamp in the future would make the outage look negative-length, so it
+  // is treated as absent and this probe becomes the start.
+  const firstFailureAtMs =
+    storedFirstFailureAtMs !== null && storedFirstFailureAtMs <= now ? storedFirstFailureAtMs : now;
+  // Clamped, so skew between instances fails toward *not* emailing.
+  const outageMs = Math.max(0, now - firstFailureAtMs);
+
+  const shouldAlert =
+    !alerted &&
+    failureCount >= BACKEND_ALERT_FAILURES_BEFORE_ALERT &&
+    outageMs >= BACKEND_ALERT_MIN_OUTAGE_MS;
+
+  return {
+    shouldAlert,
+    next: {
+      consecutiveFailures: failureCount,
+      firstFailureAtMs,
+      // Once an email has gone out, every later failure in the same outage stays silent.
+      alerted: alerted || shouldAlert,
+    },
+    outageStartedAtMs: firstFailureAtMs,
+    failureCount,
+  };
+}
+
+// Plain-language gloss for a probe reason, for the alert email. Anything unrecognized
+// degrades to a generic line rather than being echoed, so an unexpected value can never
+// smuggle upstream text into the message.
+export function backendProbeReasonLabel(reason: string): string {
+  if (reason === "timeout") return "Connection timed out";
+  if (reason === "network_error") return "Connection refused, DNS failure, or no route to host";
+  if (reason === "bad_body") {
+    return 'Answered, but not with {"ok": true} — possibly a tunnel interstitial or an error page';
+  }
+  if (reason === "not_configured") return "No backend base URL is configured";
+  if (reason === "ok") return "Reachable";
+  const http = /^http_(\d{3})$/.exec(reason);
+  if (http) return `Upstream answered HTTP ${http[1]}`;
+  return "Unreachable for an unrecognized reason";
+}
+
+// Format a span as "4m 12s" / "3h 05m" / "2d 04h". Used for "down for" in the alert email.
+export function formatDurationShort(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "unknown";
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (days > 0) return `${days}d ${pad(hours)}h`;
+  if (hours > 0) return `${hours}h ${pad(minutes)}m`;
+  if (minutes > 0) return `${minutes}m ${pad(seconds)}s`;
+  return `${seconds}s`;
+}

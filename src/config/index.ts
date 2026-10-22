@@ -63,6 +63,9 @@ export const config = {
   centralDataEncryptionSecret: process.env.CENTRAL_DATA_ENCRYPTION_SECRET ?? process.env.TOKEN_ENCRYPTION_SECRET ?? "",
   centralDataKeyVersion: process.env.CENTRAL_DATA_KEY_VERSION ?? "v1",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
+  // Where backend-downtime alerts go. Absent is a valid, documented state: it
+  // disables alerting rather than breaking a deploy, so it is never required.
+  alertEmailTo: (process.env.ALERT_EMAIL_TO ?? "").trim(),
   emailFrom: process.env.EMAIL_FROM ?? `${PRODUCT_NAME} <no-reply@genaie.site>`,
   smtpHost: process.env.SMTP_HOST ?? "",
   smtpPort: Number.parseInt(process.env.SMTP_PORT ?? "587", 10),
