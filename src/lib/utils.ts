@@ -176,6 +176,31 @@ export function webetuVerifyThrottleDecision(input: WindowInput): WebetuVerifyTh
   return fixedWindowDecision(input, WEBETU_VERIFY_WINDOW_MS, WEBETU_VERIFY_MAX_ATTEMPTS);
 }
 
+// Per-target cap: how many times one Webetu username may be tried per day, across ALL of
+// our accounts. The per-user caps alone are bypassed by signing in with many Google
+// accounts; this one bounds the guesses any single student's account can receive.
+// Unlike the per-user counters it is cleared by a successful verify, because only
+// someone who knows that student's password can produce one.
+export const WEBETU_VERIFY_TARGET_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const WEBETU_VERIFY_TARGET_MAX_ATTEMPTS = 20;
+
+export function webetuVerifyTargetDecision(input: WindowInput): WebetuVerifyThrottleDecision {
+  return fixedWindowDecision(
+    input,
+    WEBETU_VERIFY_TARGET_WINDOW_MS,
+    WEBETU_VERIFY_TARGET_MAX_ATTEMPTS
+  );
+}
+
+// Document id for a username's per-target counter. Hashed so usernames are not stored
+// in the clear, and normalized (Unicode NFKC, case, all whitespace) so spellings an
+// attacker might hope Webetu treats as the same account ("Foo", " f oo", full-width
+// digits) still share one budget. Erring toward merging only makes the cap stricter.
+export function webetuVerifyTargetKey(username: string) {
+  const normalized = String(username ?? "").normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+  return crypto.createHash("sha256").update(`webetu-verify:${normalized}`).digest("hex");
+}
+
 // Same decision for the 24-hour cap. An attempt must be allowed by both.
 export function webetuVerifyDailyDecision(input: WindowInput): WebetuVerifyThrottleDecision {
   return fixedWindowDecision(

@@ -3,6 +3,9 @@ import {
   classifyVerifyResponse,
   webetuVerifyThrottleDecision,
   webetuVerifyDailyDecision,
+  webetuVerifyTargetDecision,
+  webetuVerifyTargetKey,
+  WEBETU_VERIFY_TARGET_MAX_ATTEMPTS,
   WEBETU_VERIFY_MAX_ATTEMPTS,
   WEBETU_VERIFY_WINDOW_MS,
   WEBETU_VERIFY_DAILY_MAX_ATTEMPTS,
@@ -171,5 +174,35 @@ describe("webetuVerifyDailyDecision", () => {
     expect(
       webetuVerifyDailyDecision({ now, windowStartMs: now + 60_000, count: WEBETU_VERIFY_DAILY_MAX_ATTEMPTS })
     ).toEqual({ allowed: true, count: 1, windowReset: true });
+  });
+});
+
+// The per-username cap is what holds when an attacker spreads guesses over many of our
+// accounts: it counts tries against one Webetu username, whoever is making them.
+describe("webetuVerifyTargetDecision / webetuVerifyTargetKey", () => {
+  const now = 1_700_000_000_000;
+
+  it("blocks once one username has been tried the maximum number of times", () => {
+    const start = now - 60 * 60 * 1000;
+    expect(
+      webetuVerifyTargetDecision({ now, windowStartMs: start, count: WEBETU_VERIFY_TARGET_MAX_ATTEMPTS - 1 })
+    ).toMatchObject({ allowed: true, count: WEBETU_VERIFY_TARGET_MAX_ATTEMPTS });
+    expect(
+      webetuVerifyTargetDecision({ now, windowStartMs: start, count: WEBETU_VERIFY_TARGET_MAX_ATTEMPTS })
+    ).toMatchObject({ allowed: false });
+  });
+
+  it("gives variants of one username the same budget", () => {
+    expect(webetuVerifyTargetKey("Student42")).toBe(webetuVerifyTargetKey("  student42 "));
+    expect(webetuVerifyTargetKey("202112345")).toBe(webetuVerifyTargetKey("2021 12345"));
+    // Full-width digits fold to ASCII under NFKC.
+    expect(webetuVerifyTargetKey("202112345")).toBe(webetuVerifyTargetKey("２０２１１２３４５"));
+    expect(webetuVerifyTargetKey("student42")).not.toBe(webetuVerifyTargetKey("student43"));
+  });
+
+  it("does not store the username in the clear", () => {
+    const key = webetuVerifyTargetKey("student42");
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    expect(key).not.toContain("student42");
   });
 });

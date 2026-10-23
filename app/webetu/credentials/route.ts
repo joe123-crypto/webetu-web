@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/src/config";
 import { verifyFirebaseRequest } from "@/src/security/session";
 import {
+  clearWebetuVerifyTarget,
   consumeWebetuVerifyAttempt,
   refundWebetuVerifyAttempt,
   saveWebetuCredentials,
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     // so this endpoint can't be used to brute-force Webetu accounts through us. Only
     // when a real verification will follow; throws 429 once the budget is spent.
     const willVerify = verificationConfigured();
-    if (willVerify) await consumeWebetuVerifyAttempt(decoded.uid);
+    if (willVerify) await consumeWebetuVerifyAttempt(decoded.uid, creds.username);
 
     // Then verify the credentials actually work against Webetu before saving, so a
     // user cannot store a non-existent account or wrong password. Runs on every
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
     }
     if (verdict === "unavailable") {
       // No verdict came back, so don't charge the user for our outage.
-      if (willVerify) await refundWebetuVerifyAttempt(decoded.uid).catch(() => {});
+      if (willVerify) await refundWebetuVerifyAttempt(decoded.uid, creds.username).catch(() => {});
       throw httpError(
         503,
         "Couldn't verify your Webetu credentials right now. Please try again."
@@ -94,10 +95,14 @@ export async function POST(req: NextRequest) {
     }
     // "valid" or "skip" -> proceed to save.
 
-    // The verify budget is not cleared after a success: a reset here would let a user
+    // The per-user budget is not cleared after a success: a reset here would let a user
     // interleave their own working credentials with guesses at someone else's account
-    // and never run out. The window expiring is what frees it.
+    // and never run out. Only the per-username budget is cleared, since a valid login
+    // proves the caller knows that account's password.
     const result = await saveWebetuCredentials(decoded.uid, body);
+    if (willVerify && verdict === "valid") {
+      await clearWebetuVerifyTarget(creds.username).catch(() => {});
+    }
     return NextResponse.json(result);
   } catch (err: unknown) {
     const error = err as Error & { status?: number };
