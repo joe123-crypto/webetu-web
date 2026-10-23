@@ -128,14 +128,26 @@ export type WebetuVerifyThrottleDecision = {
   windowReset: boolean;
 };
 
-// Decide whether one more verify attempt is allowed, given the stored window. Pure so
-// the rollover/limit logic is testable without Firestore. A missing or malformed
-// windowStartMs is treated as "no window yet" and starts a fresh one.
-export function webetuVerifyThrottleDecision(input: {
+// The short window stops bursts; the daily cap bounds the total, so a slow guesser
+// gets at most this many tries per day. Neither counter is reset by a successful
+// verify: a user could otherwise interleave their own valid credentials with guesses
+// at someone else's password and reset the budget forever.
+export const WEBETU_VERIFY_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const WEBETU_VERIFY_DAILY_MAX_ATTEMPTS = 30;
+
+type WindowInput = {
   now: number;
   windowStartMs?: number | null;
   count?: number | null;
-}): WebetuVerifyThrottleDecision {
+};
+
+// One fixed-window counter. A missing or malformed windowStartMs is treated as "no
+// window yet" and starts a fresh one.
+function fixedWindowDecision(
+  input: WindowInput,
+  windowMs: number,
+  maxAttempts: number
+): WebetuVerifyThrottleDecision {
   const { now } = input;
   const windowStartMs =
     typeof input.windowStartMs === "number" && Number.isFinite(input.windowStartMs)
@@ -149,13 +161,74 @@ export function webetuVerifyThrottleDecision(input: {
   // No window yet, or the previous one has elapsed: this attempt starts a new one.
   // A windowStart in the future (clock skew) also rolls over rather than locking out.
   const expired =
-    windowStartMs === null || now - windowStartMs >= WEBETU_VERIFY_WINDOW_MS || now < windowStartMs;
+    windowStartMs === null || now - windowStartMs >= windowMs || now < windowStartMs;
   if (expired) return { allowed: true, count: 1, windowReset: true };
 
-  if (stored >= WEBETU_VERIFY_MAX_ATTEMPTS) {
+  if (stored >= maxAttempts) {
     return { allowed: false, count: stored, windowReset: false };
   }
   return { allowed: true, count: stored + 1, windowReset: false };
+}
+
+// Decide whether one more verify attempt is allowed in the short (10-minute) window.
+// Pure so the rollover/limit logic is testable without Firestore.
+export function webetuVerifyThrottleDecision(input: WindowInput): WebetuVerifyThrottleDecision {
+  return fixedWindowDecision(input, WEBETU_VERIFY_WINDOW_MS, WEBETU_VERIFY_MAX_ATTEMPTS);
+}
+
+// Per-target cap: how many times one Webetu username may be tried per day, across ALL of
+// our accounts. The per-user caps alone are bypassed by signing in with many Google
+// accounts; this one bounds the guesses any single student's account can receive.
+// Unlike the per-user counters it is cleared by a successful verify, because only
+// someone who knows that student's password can produce one.
+export const WEBETU_VERIFY_TARGET_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const WEBETU_VERIFY_TARGET_MAX_ATTEMPTS = 20;
+
+export function webetuVerifyTargetDecision(input: WindowInput): WebetuVerifyThrottleDecision {
+  return fixedWindowDecision(
+    input,
+    WEBETU_VERIFY_TARGET_WINDOW_MS,
+    WEBETU_VERIFY_TARGET_MAX_ATTEMPTS
+  );
+}
+
+// Document id for a username's per-target counter. Hashed so usernames are not stored
+// in the clear, and normalized (Unicode NFKC, case, all whitespace) so spellings an
+// attacker might hope Webetu treats as the same account ("Foo", " f oo", full-width
+// digits) still share one budget. Erring toward merging only makes the cap stricter.
+export function webetuVerifyTargetKey(username: string) {
+  const normalized = String(username ?? "").normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+  return crypto.createHash("sha256").update(`webetu-verify:${normalized}`).digest("hex");
+}
+
+// Same decision for the 24-hour cap. An attempt must be allowed by both.
+export function webetuVerifyDailyDecision(input: WindowInput): WebetuVerifyThrottleDecision {
+  return fixedWindowDecision(
+    input,
+    WEBETU_VERIFY_DAILY_WINDOW_MS,
+    WEBETU_VERIFY_DAILY_MAX_ATTEMPTS
+  );
+}
+
+// A manual run makes the backend log in to Webetu and book for three days, holding a
+// worker for up to five minutes. One per user per cooldown keeps a single account from
+// tying up the backend or flooding Webetu.
+export const WEBETU_MANUAL_RUN_COOLDOWN_MS = 5 * 60 * 1000;
+
+// Whether a manual run may start now, given when the user's last one started (null when
+// never, or unreadable). A start time in the future (clock skew) does not lock the user out.
+export function webetuManualRunDecision(input: {
+  now: number;
+  lastStartedMs?: number | null;
+}): { allowed: boolean; retryAfterMs: number } {
+  const last =
+    typeof input.lastStartedMs === "number" && Number.isFinite(input.lastStartedMs)
+      ? input.lastStartedMs
+      : null;
+  if (last === null || input.now < last) return { allowed: true, retryAfterMs: 0 };
+  const elapsed = input.now - last;
+  if (elapsed >= WEBETU_MANUAL_RUN_COOLDOWN_MS) return { allowed: true, retryAfterMs: 0 };
+  return { allowed: false, retryAfterMs: WEBETU_MANUAL_RUN_COOLDOWN_MS - elapsed };
 }
 
 export type WebetuVerifyVerdict = "valid" | "invalid" | "unavailable" | "skip";

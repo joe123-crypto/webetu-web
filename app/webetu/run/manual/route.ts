@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/src/config";
 import { verifyFirebaseRequest } from "@/src/security/session";
+import {
+  claimWebetuManualRun,
+  getWebetuCredentialStatus,
+  releaseWebetuManualRun,
+} from "@/src/domains/webetu";
 
 export const runtime = "nodejs";
 // The agent performs a full reservation run (3 meals/day for 3 days) synchronously,
@@ -23,6 +28,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Only accounts with saved (and therefore verified) Webetu credentials may run.
+    // The cooldown below is per account and accounts are free to create, so without
+    // this, throwaway accounts could keep the backend's few run slots busy and lock
+    // real users out. A throwaway account cannot pass verification.
+    const credentials = await getWebetuCredentialStatus(decoded.uid);
+    if (!credentials.configured) {
+      return NextResponse.json(
+        { ok: false, error: "Save your Webetu credentials before starting a run." },
+        { status: 409 }
+      );
+    }
+
+    // One run per user per cooldown: each run holds a backend worker for minutes and
+    // logs in to Webetu, so an unthrottled button could take the backend down.
+    await claimWebetuManualRun(decoded.uid);
+
     const res = await fetch(
       `${config.webetuApiBaseUrl}/api/webetu/users/${encodeURIComponent(decoded.uid)}/trigger-run`,
       {
@@ -42,6 +63,10 @@ export async function POST(req: NextRequest) {
         (body && typeof body.error === "string" && body.error) ||
         "Reservation run failed.";
       const status = res.ok ? 502 : res.status;
+      // 409/429 mean the backend never started this run, so don't charge the cooldown.
+      if (status === 409 || status === 429) {
+        await releaseWebetuManualRun(decoded.uid).catch(() => {});
+      }
       return NextResponse.json({ ok: false, error: message }, { status });
     }
 

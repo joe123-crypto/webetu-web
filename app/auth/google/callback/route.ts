@@ -32,6 +32,9 @@ export async function GET(req: NextRequest) {
       const finishUrl = new URL("/login", req.nextUrl.origin);
       const code = searchParams.get("code");
       if (code) finishUrl.searchParams.set("code", code);
+      // The finish step re-verifies the state and its nonce against this
+      // browser's cookie, so the state must travel with the code.
+      finishUrl.searchParams.set("state", state);
       if (payload.next) finishUrl.searchParams.set("next", payload.next);
       return NextResponse.redirect(finishUrl, 302);
     }

@@ -15,6 +15,10 @@ import {
   webetuLocation,
   webetuLocationIsStale,
   webetuVerifyThrottleDecision,
+  webetuVerifyDailyDecision,
+  webetuVerifyTargetDecision,
+  webetuVerifyTargetKey,
+  webetuManualRunDecision,
   WEBETU_FALLBACK_RESTAURANT,
   type WebetuLocation,
 } from "@/src/lib/utils";
@@ -58,43 +62,71 @@ export async function getWebetuUsername(uid: string): Promise<string | null> {
   return typeof username === "string" && username ? username : null;
 }
 
-// Per-user rate limit for credential verification. Verifying makes our backend attempt a
-// Webetu login with whatever pair the caller supplies, so without a cap a signed-in user
-// could brute-force other students' Webetu accounts through our server. Counted in
-// webetuVerifyAttempts/{uid} as a fixed window.
+// Rate limits for credential verification. Verifying makes our backend attempt a Webetu
+// login with whatever pair the caller supplies, so without caps a signed-in user could
+// brute-force other students' Webetu accounts through our server. Three counters, all
+// fixed windows, all checked in one transaction:
+//   - webetuVerifyAttempts/{uid}: a short window (count/windowStartAt) against bursts
+//     and a daily one (dayCount/dayWindowStartAt) bounding one account's total;
+//   - webetuVerifyTargets/{hash(username)}: a daily cap on how often one Webetu
+//     username may be tried, whichever of our accounts is trying. This is what stops
+//     an attacker who simply signs in with many Google accounts.
 //
-// Throws 429 when the window's budget is spent. The caller consumes an attempt only when
-// a real verification is about to happen (never when verification is skipped), and calls
-// resetWebetuVerifyAttempts after a success so an honest user who mistyped is not left
-// throttled.
-export async function consumeWebetuVerifyAttempt(uid: string): Promise<void> {
+// Throws 429 when any budget is spent. The caller consumes an attempt only when a real
+// verification is about to happen (never when verification is skipped). The per-user
+// counters are never cleared by a success: a user could otherwise alternate their own
+// working credentials with guesses and never run out. The per-target counter is cleared
+// by a success (clearWebetuVerifyTarget), since only the account's owner can produce one.
+export async function consumeWebetuVerifyAttempt(uid: string, username: string): Promise<void> {
   const safeUid = validateFirebaseUid(uid);
   const db = getFirestoreDb();
   const ref = db.collection("webetuVerifyAttempts").doc(safeUid);
+  const targetRef = db.collection("webetuVerifyTargets").doc(webetuVerifyTargetKey(username));
   const now = Date.now();
 
   await db.runTransaction(async (t) => {
     const doc = await t.get(ref);
+    const targetDoc = await t.get(targetRef);
     const data = doc.data() || {};
+    const target = targetDoc.data() || {};
     const decision = webetuVerifyThrottleDecision({
       now,
       windowStartMs: data.windowStartAt?.toMillis?.() ?? null,
       count: typeof data.count === "number" ? data.count : null,
     });
+    const daily = webetuVerifyDailyDecision({
+      now,
+      windowStartMs: data.dayWindowStartAt?.toMillis?.() ?? null,
+      count: typeof data.dayCount === "number" ? data.dayCount : null,
+    });
+    const perTarget = webetuVerifyTargetDecision({
+      now,
+      windowStartMs: target.windowStartAt?.toMillis?.() ?? null,
+      count: typeof target.count === "number" ? target.count : null,
+    });
     if (!decision.allowed) {
-      throw httpError(
-        429,
-        "Too many verification attempts. Please wait a few minutes and try again."
-      );
+      throw httpError(429, "Too many verification attempts. Please wait a few minutes and try again.");
+    }
+    if (!daily.allowed || !perTarget.allowed) {
+      throw httpError(429, "Too many verification attempts today. Please try again tomorrow.");
     }
     t.set(
       ref,
       {
         userId: safeUid,
         count: decision.count,
-        ...(decision.windowReset
-          ? { windowStartAt: FieldValue.serverTimestamp() }
-          : {}),
+        ...(decision.windowReset ? { windowStartAt: FieldValue.serverTimestamp() } : {}),
+        dayCount: daily.count,
+        ...(daily.windowReset ? { dayWindowStartAt: FieldValue.serverTimestamp() } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    t.set(
+      targetRef,
+      {
+        count: perTarget.count,
+        ...(perTarget.windowReset ? { windowStartAt: FieldValue.serverTimestamp() } : {}),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -102,32 +134,72 @@ export async function consumeWebetuVerifyAttempt(uid: string): Promise<void> {
   });
 }
 
-// Clear a user's verify budget after a confirmed-good login, so earlier typos do not
-// count against someone who has demonstrably supplied working credentials.
-export async function resetWebetuVerifyAttempts(uid: string): Promise<void> {
-  const safeUid = validateFirebaseUid(uid);
+// Clear a username's per-target budget after a confirmed-good login. Only someone who
+// knows that student's password can trigger this, so it cannot be used to keep guessing,
+// and it stops guesses by others from locking the real owner out for the rest of the day.
+export async function clearWebetuVerifyTarget(username: string): Promise<void> {
   const db = getFirestoreDb();
-  await db.collection("webetuVerifyAttempts").doc(safeUid).delete();
+  await db.collection("webetuVerifyTargets").doc(webetuVerifyTargetKey(username)).delete();
 }
 
 // Give an attempt back when verification produced no verdict (worker down, timeout).
 // The budget exists to stop brute-forcing, and an attempt that returns no valid/invalid
 // signal tells an attacker nothing -- so charging for it only punishes real users during
 // an outage. Decrements rather than clearing, so a forced failure can't wipe the budget.
-export async function refundWebetuVerifyAttempt(uid: string): Promise<void> {
+export async function refundWebetuVerifyAttempt(uid: string, username: string): Promise<void> {
   const safeUid = validateFirebaseUid(uid);
   const db = getFirestoreDb();
   const ref = db.collection("webetuVerifyAttempts").doc(safeUid);
+  const targetRef = db.collection("webetuVerifyTargets").doc(webetuVerifyTargetKey(username));
   await db.runTransaction(async (t) => {
     const doc = await t.get(ref);
-    if (!doc.exists) return;
-    const current = doc.data()?.count;
-    if (typeof current !== "number" || current <= 0) return;
-    t.update(ref, {
-      count: Math.max(0, current - 1),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const targetDoc = await t.get(targetRef);
+    if (doc.exists) {
+      const data = doc.data() || {};
+      const update: Record<string, unknown> = {};
+      if (typeof data.count === "number" && data.count > 0) update.count = data.count - 1;
+      if (typeof data.dayCount === "number" && data.dayCount > 0) update.dayCount = data.dayCount - 1;
+      if (Object.keys(update).length > 0) {
+        t.update(ref, { ...update, updatedAt: FieldValue.serverTimestamp() });
+      }
+    }
+    const targetCount = targetDoc.data()?.count;
+    if (targetDoc.exists && typeof targetCount === "number" && targetCount > 0) {
+      t.update(targetRef, { count: targetCount - 1, updatedAt: FieldValue.serverTimestamp() });
+    }
   });
+}
+
+// Claim the user's manual-run slot (webetuManualRuns/{uid}). Throws 429 while the
+// previous run's cooldown is still running. Done in a transaction so two concurrent
+// clicks cannot both start a run.
+export async function claimWebetuManualRun(uid: string): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const ref = db.collection("webetuManualRuns").doc(safeUid);
+  const now = Date.now();
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(ref);
+    const decision = webetuManualRunDecision({
+      now,
+      lastStartedMs: doc.data()?.startedAt?.toMillis?.() ?? null,
+    });
+    if (!decision.allowed) {
+      const minutes = Math.max(1, Math.ceil(decision.retryAfterMs / 60_000));
+      throw httpError(
+        429,
+        `A run was started recently. Please wait about ${minutes} minute(s) and try again.`
+      );
+    }
+    t.set(ref, { userId: safeUid, startedAt: FieldValue.serverTimestamp() });
+  });
+}
+
+// Give the slot back when the backend refused to start the run at all (it was busy),
+// so the user is not made to wait for a run that never happened.
+export async function releaseWebetuManualRun(uid: string): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  await getFirestoreDb().collection("webetuManualRuns").doc(safeUid).delete();
 }
 
 export async function saveWebetuCredentials(uid: string, body: any) {
