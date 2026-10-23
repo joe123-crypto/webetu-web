@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/src/config";
 import { verifyFirebaseRequest } from "@/src/security/session";
-import { claimWebetuManualRun, releaseWebetuManualRun } from "@/src/domains/webetu";
+import {
+  claimWebetuManualRun,
+  getWebetuCredentialStatus,
+  releaseWebetuManualRun,
+} from "@/src/domains/webetu";
 
 export const runtime = "nodejs";
 // The agent performs a full reservation run (3 meals/day for 3 days) synchronously,
@@ -21,6 +25,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "Reservation service is not configured." },
         { status: 503 }
+      );
+    }
+
+    // Only accounts with saved (and therefore verified) Webetu credentials may run.
+    // The cooldown below is per account and accounts are free to create, so without
+    // this, throwaway accounts could keep the backend's few run slots busy and lock
+    // real users out. A throwaway account cannot pass verification.
+    const credentials = await getWebetuCredentialStatus(decoded.uid);
+    if (!credentials.configured) {
+      return NextResponse.json(
+        { ok: false, error: "Save your Webetu credentials before starting a run." },
+        { status: 409 }
       );
     }
 
