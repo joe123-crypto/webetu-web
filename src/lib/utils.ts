@@ -185,6 +185,27 @@ export function webetuVerifyDailyDecision(input: WindowInput): WebetuVerifyThrot
   );
 }
 
+// A manual run makes the backend log in to Webetu and book for three days, holding a
+// worker for up to five minutes. One per user per cooldown keeps a single account from
+// tying up the backend or flooding Webetu.
+export const WEBETU_MANUAL_RUN_COOLDOWN_MS = 5 * 60 * 1000;
+
+// Whether a manual run may start now, given when the user's last one started (null when
+// never, or unreadable). A start time in the future (clock skew) does not lock the user out.
+export function webetuManualRunDecision(input: {
+  now: number;
+  lastStartedMs?: number | null;
+}): { allowed: boolean; retryAfterMs: number } {
+  const last =
+    typeof input.lastStartedMs === "number" && Number.isFinite(input.lastStartedMs)
+      ? input.lastStartedMs
+      : null;
+  if (last === null || input.now < last) return { allowed: true, retryAfterMs: 0 };
+  const elapsed = input.now - last;
+  if (elapsed >= WEBETU_MANUAL_RUN_COOLDOWN_MS) return { allowed: true, retryAfterMs: 0 };
+  return { allowed: false, retryAfterMs: WEBETU_MANUAL_RUN_COOLDOWN_MS - elapsed };
+}
+
 export type WebetuVerifyVerdict = "valid" | "invalid" | "unavailable" | "skip";
 
 // Map a Webetu worker verify-credentials response (or a skip signal) to a verdict

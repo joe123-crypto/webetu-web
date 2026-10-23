@@ -16,6 +16,7 @@ import {
   webetuLocationIsStale,
   webetuVerifyThrottleDecision,
   webetuVerifyDailyDecision,
+  webetuManualRunDecision,
   WEBETU_FALLBACK_RESTAURANT,
   type WebetuLocation,
 } from "@/src/lib/utils";
@@ -137,6 +138,38 @@ export async function refundWebetuVerifyAttempt(uid: string): Promise<void> {
     if (Object.keys(update).length === 0) return;
     t.update(ref, { ...update, updatedAt: FieldValue.serverTimestamp() });
   });
+}
+
+// Claim the user's manual-run slot (webetuManualRuns/{uid}). Throws 429 while the
+// previous run's cooldown is still running. Done in a transaction so two concurrent
+// clicks cannot both start a run.
+export async function claimWebetuManualRun(uid: string): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  const db = getFirestoreDb();
+  const ref = db.collection("webetuManualRuns").doc(safeUid);
+  const now = Date.now();
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(ref);
+    const decision = webetuManualRunDecision({
+      now,
+      lastStartedMs: doc.data()?.startedAt?.toMillis?.() ?? null,
+    });
+    if (!decision.allowed) {
+      const minutes = Math.max(1, Math.ceil(decision.retryAfterMs / 60_000));
+      throw httpError(
+        429,
+        `A run was started recently. Please wait about ${minutes} minute(s) and try again.`
+      );
+    }
+    t.set(ref, { userId: safeUid, startedAt: FieldValue.serverTimestamp() });
+  });
+}
+
+// Give the slot back when the backend refused to start the run at all (it was busy),
+// so the user is not made to wait for a run that never happened.
+export async function releaseWebetuManualRun(uid: string): Promise<void> {
+  const safeUid = validateFirebaseUid(uid);
+  await getFirestoreDb().collection("webetuManualRuns").doc(safeUid).delete();
 }
 
 export async function saveWebetuCredentials(uid: string, body: any) {
