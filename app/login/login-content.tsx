@@ -52,6 +52,7 @@ export function LoginContent() {
   const searchParams = useSearchParams();
   const nextParam = safeNext(searchParams.get("next"));
   const codeParam = searchParams.get("code");
+  const stateParam = searchParams.get("state");
   const busy = !auth || !settings || ["loading", "google", "session", "redirecting", "success"].includes(phase);
 
   const completeSession = useCallback((user: User, redirectNext?: string | null) => {
@@ -79,7 +80,7 @@ export function LoginContent() {
     return task;
   }, [nextParam]);
 
-  const finishGoogleSignIn = useCallback(async (authInstance: Auth, code: string) => {
+  const finishGoogleSignIn = useCallback(async (authInstance: Auth, code: string, state: string | null) => {
     if (finishRef.current) return;
     finishRef.current = true;
     setPhase("session");
@@ -91,7 +92,8 @@ export function LoginContent() {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ code }),
+        // The state lets the server confirm this browser started the sign-in.
+        body: JSON.stringify({ code, state }),
       });
       const exchangeBody = (await exchange.json().catch(() => ({}))) as {
         id_token?: string;
@@ -142,8 +144,9 @@ export function LoginContent() {
           // from the URL so a manual retry starts clean.
           const url = new URL(window.location.href);
           url.searchParams.delete("code");
+          url.searchParams.delete("state");
           window.history.replaceState(null, "", url.pathname + url.search);
-          await finishGoogleSignIn(authInstance, codeParam);
+          await finishGoogleSignIn(authInstance, codeParam, stateParam);
           return;
         }
 
@@ -161,7 +164,7 @@ export function LoginContent() {
     return () => {
       active = false;
     };
-  }, [completeSession, finishGoogleSignIn, codeParam]);
+  }, [completeSession, finishGoogleSignIn, codeParam, stateParam]);
 
   async function handleCombinedGoogleSignIn() {
     if (busy || actionInProgressRef.current) return;

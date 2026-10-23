@@ -105,3 +105,37 @@ export function verifyState(state: string) {
     throw httpError(400, "Invalid state payload.");
   }
 }
+
+export const SIGNIN_STATE_MAX_AGE_MS = 10 * 60 * 1000;
+
+// Checks that an authorization code really comes back to the browser that started
+// this sign-in. The state must be ours (signed), be a sign-in state, be fresh, and
+// carry the same nonce that /auth/google/signin set as a cookie in this browser.
+// Without the nonce check, anyone could send a victim a link with the attacker's
+// own code and sign the victim into the attacker's account (login CSRF).
+export function verifySigninState(
+  state: unknown,
+  cookieNonce: string | null | undefined,
+  now: number = Date.now(),
+) {
+  if (typeof state !== "string" || !state) throw httpError(400, "Missing sign-in state.");
+  const payload = verifyState(state);
+  if (!payload || typeof payload !== "object" || payload.flow !== "signin") {
+    throw httpError(400, "Invalid sign-in state.");
+  }
+  const ts = Number(payload.ts);
+  // A minute of slack for clock skew between the instances that issued and verify it.
+  if (!Number.isFinite(ts) || ts > now + 60_000 || now - ts > SIGNIN_STATE_MAX_AGE_MS) {
+    throw httpError(400, "Sign-in expired. Please try again.");
+  }
+  const expected = Buffer.from(String(payload.nonce ?? ""), "utf8");
+  const provided = Buffer.from(String(cookieNonce ?? ""), "utf8");
+  if (
+    expected.length === 0 ||
+    provided.length !== expected.length ||
+    !crypto.timingSafeEqual(provided, expected)
+  ) {
+    throw httpError(400, "Sign-in was started in a different browser. Please try again.");
+  }
+  return payload;
+}

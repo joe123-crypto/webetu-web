@@ -1,7 +1,15 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { config, requireConfig, assertPublicBaseUrl, TOKEN_URL } from "@/src/config";
+import {
+  config,
+  requireConfig,
+  assertPublicBaseUrl,
+  TOKEN_URL,
+  GOOGLE_SIGNIN_NONCE_COOKIE,
+} from "@/src/config";
 import { httpError } from "@/src/lib/utils";
+import { verifySigninState } from "@/src/security/crypto";
+import { clearGoogleSigninNonceCookieHeader, parseCookies } from "@/src/security/session";
 
 export const runtime = "nodejs";
 
@@ -24,6 +32,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const code = String(body.code ?? "").trim();
     if (!code) throw httpError(400, "Authorization code is required.");
+
+    // Only finish a sign-in this browser started (state signed by us, fresh, and
+    // carrying the nonce from this browser's cookie). Blocks login CSRF.
+    stage = "verify_state";
+    const cookieNonce = parseCookies(req.headers.get("cookie"))[GOOGLE_SIGNIN_NONCE_COOKIE];
+    verifySigninState(body.state, cookieNonce);
 
     const params = new URLSearchParams({
       code,
@@ -65,7 +79,10 @@ export async function POST(req: NextRequest) {
       throw httpError(502, `Google token exchange failed: ${detail}`);
     }
 
-    return NextResponse.json({ ok: true, id_token: tokens.id_token });
+    const response = NextResponse.json({ ok: true, id_token: tokens.id_token });
+    // One nonce, one sign-in: clear it so the same state can't be replayed.
+    response.headers.set("Set-Cookie", clearGoogleSigninNonceCookieHeader());
+    return response;
   } catch (err: unknown) {
     const error = err as Error & { status?: number; code?: string };
     const status = error.status ?? 500;
@@ -76,9 +93,12 @@ export async function POST(req: NextRequest) {
       error: error.message,
       code: error.code ?? error.name,
     });
-    return NextResponse.json(
+    const response = NextResponse.json(
       { ok: false, error: error.message ?? "Internal server error", requestId },
       { status }
     );
+    // A failed attempt is restarted from /auth/google/signin, which issues a fresh nonce.
+    response.headers.set("Set-Cookie", clearGoogleSigninNonceCookieHeader());
+    return response;
   }
 }
