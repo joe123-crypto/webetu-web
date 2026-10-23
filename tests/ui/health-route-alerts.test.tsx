@@ -22,6 +22,17 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
+/**
+ * A fetch stub that builds a NEW Response per call.
+ *
+ * `mockResolvedValue(jsonResponse(...))` hands the same Response to every call, and a
+ * Response body can only be read once -- so the second probe onwards would silently read as
+ * unreachable. Any test that drives more than one probe has to mint a fresh one.
+ */
+function respondWith(body: unknown, status = 200) {
+  return vi.fn(async () => jsonResponse(body, status));
+}
+
 beforeEach(() => {
   scheduled.length = 0;
   vi.stubEnv("WEBETU_API_BASE_URL", TEST_BASE_URL);
@@ -74,7 +85,7 @@ describe("GET /health alert bookkeeping", () => {
 
   it("schedules again once the cache window has passed", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: false }, 503)));
+    vi.stubGlobal("fetch", respondWith({ ok: false }, 503));
     const GET = await loadRoute();
 
     await GET();
@@ -113,6 +124,70 @@ describe("GET /health alert bookkeeping", () => {
 
     expect(recordBackendProbe.mock.calls[0][0]).toMatchObject({ reason: "timeout" });
     vi.doUnmock("@/src/domains/alerts");
+  });
+
+  it("reports every failed probe", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", respondWith({ ok: false }, 503));
+    const GET = await loadRoute();
+
+    for (let i = 0; i < 4; i += 1) {
+      await GET();
+      vi.advanceTimersByTime(11_000);
+    }
+
+    // Failures are the evidence an alert is built from, so none of them is throttled.
+    expect(scheduled).toHaveLength(4);
+    vi.useRealTimers();
+  });
+
+  it("throttles an unbroken run of healthy probes", async () => {
+    // A healthy probe writes the same "nothing is wrong" record every time. Reporting each
+    // one would mean a Firestore write per cache window, per instance, forever.
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", respondWith({ ok: true }));
+    const GET = await loadRoute();
+
+    for (let i = 0; i < 20; i += 1) {
+      await GET();
+      vi.advanceTimersByTime(11_000);
+    }
+
+    // 20 fresh probes spanning ~3.7 minutes: the first (cold instance) and nothing else.
+    expect(scheduled).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it("reports a healthy probe again once the throttle window has passed", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", respondWith({ ok: true }));
+    const GET = await loadRoute();
+
+    await GET();
+    vi.advanceTimersByTime(10 * 60_000 + 1_000);
+    await GET();
+
+    expect(scheduled).toHaveLength(2);
+    vi.useRealTimers();
+  });
+
+  it("reports a recovery immediately rather than waiting out the throttle", async () => {
+    // The healthy probe that ends an outage is what clears the stored flag, so it cannot
+    // be throttled behind a ten-minute window.
+    vi.useFakeTimers();
+    const fetchMock = respondWith({ ok: false }, 503);
+    vi.stubGlobal("fetch", fetchMock);
+    const GET = await loadRoute();
+
+    await GET();
+    expect(scheduled).toHaveLength(1);
+
+    fetchMock.mockImplementation(async () => jsonResponse({ ok: true }));
+    vi.advanceTimersByTime(11_000);
+    await GET();
+
+    expect(scheduled).toHaveLength(2);
+    vi.useRealTimers();
   });
 
   it("flags a missing base URL as a misconfiguration rather than an outage", async () => {

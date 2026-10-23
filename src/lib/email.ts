@@ -18,11 +18,17 @@ type SendEmailParams = {
   html: string;
 };
 
-async function sendEmail({ to, subject, html }: SendEmailParams): Promise<void> {
+/**
+ * Returns whether Resend accepted the message. Callers that treat email as fire-and-forget
+ * can keep ignoring the result; the downtime alert uses it to decide whether to retry,
+ * because it marks itself sent before it gets here and would otherwise go silent on a
+ * rejection.
+ */
+async function sendEmail({ to, subject, html }: SendEmailParams): Promise<boolean> {
   const apiKey = config.resendApiKey || process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.log("[email] RESEND_API_KEY is not set — skipping email send.");
-    return;
+    return false;
   }
 
   const res = await fetch(RESEND_API_URL, {
@@ -38,7 +44,9 @@ async function sendEmail({ to, subject, html }: SendEmailParams): Promise<void> 
     const body = await res.text().catch(() => "");
     console.error(`[email] Resend API error ${res.status}: ${body}`);
     // Do not throw — email is best-effort.
+    return false;
   }
+  return true;
 }
 
 // Seam: swap in an SMTP implementation by replacing sendEmail above.
@@ -206,10 +214,12 @@ export function buildBackendAlertHtml(ctx: BackendAlertEmailContext): string {
     // Worded as "from this app" on purpose: Vercel losing egress to the worker looks
     // identical to the worker being down, and this email should not assert which.
     row("Status", "Unreachable from the web app"),
-    row("Detected (UTC)", detectedAt),
-    ...(startedAt ? [row("Outage started (UTC)", startedAt)] : []),
-    ...(downFor ? [row("Down for", downFor)] : []),
-    row("Consecutive failed probes", String(ctx.failureCount)),
+    ...(startedAt ? [row("First failure seen (UTC)", startedAt)] : []),
+    row("Latest failure (UTC)", detectedAt),
+    // Not "down for": these are samples taken when visitors happened to load the app, so
+    // the span between the first and latest failure is not an observed continuous outage.
+    ...(downFor ? [row("Failures seen across", downFor)] : []),
+    row("Failed probes seen", String(ctx.failureCount)),
     row("Last probe result", backendProbeReasonLabel(ctx.reason)),
     row("Probe target", probeTarget),
   ].join("");
@@ -238,6 +248,10 @@ export function buildBackendAlertHtml(ctx: BackendAlertEmailContext): string {
     </p>
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
     <p style="font-size:12px;color:#9ca3af;">
+      The backend is only checked when someone loads the app, not continuously, so these are
+      samples rather than monitoring — it may have recovered and failed again between them.
+    </p>
+    <p style="font-size:12px;color:#9ca3af;">
       No further email will be sent for this outage — silence does not mean it recovered.
       Re-check the app to confirm.
     </p>
@@ -247,19 +261,20 @@ export function buildBackendAlertHtml(ctx: BackendAlertEmailContext): string {
 </html>`.trim();
 }
 
-export async function sendBackendAlertEmail(ctx: BackendAlertEmailContext): Promise<void> {
+/** Returns whether the alert was actually delivered, so a failure can be retried. */
+export async function sendBackendAlertEmail(ctx: BackendAlertEmailContext): Promise<boolean> {
   try {
     const apiKey = config.resendApiKey || process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.log("[email] RESEND_API_KEY is not set — skipping backend alert email.");
-      return;
+      return false;
     }
     if (!config.alertEmailTo) {
       console.log("[email] ALERT_EMAIL_TO is not set — skipping backend alert email.");
-      return;
+      return false;
     }
 
-    await sendEmail({
+    return await sendEmail({
       to: config.alertEmailTo,
       subject: backendAlertSubject(),
       html: buildBackendAlertHtml(ctx),
@@ -267,5 +282,6 @@ export async function sendBackendAlertEmail(ctx: BackendAlertEmailContext): Prom
   } catch (err) {
     // Best-effort — never propagate.
     console.error("[email] sendBackendAlertEmail error:", err);
+    return false;
   }
 }

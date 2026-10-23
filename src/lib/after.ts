@@ -21,7 +21,13 @@ export function runAfterResponse(task: () => Promise<void> | void): void {
         console.error("[after] background task failed:", err);
       }
     });
-  } catch {
-    // No request scope -- nothing to attach the work to, and nothing that must happen.
+  } catch (err) {
+    // No request scope is expected and silent: unit tests call route handlers directly, and
+    // so do one-off scripts. Anything else means `after` itself is not working, which would
+    // otherwise stop all background work with no trace at all, so it is logged.
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/request scope|outside a request|workAsyncStorage|static generation/i.test(message)) {
+      console.error("[after] could not schedule background work:", err);
+    }
   }
 }

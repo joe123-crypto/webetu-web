@@ -5,15 +5,37 @@ import {
   formatDurationShort,
   BACKEND_ALERT_MIN_OUTAGE_MS,
   BACKEND_ALERT_STALE_STATE_MS,
+  BACKEND_ALERT_MAX_SEND_ATTEMPTS,
   type BackendAlertStoredState,
 } from "@/src/lib/utils";
 import { backendAlertSubject, buildBackendAlertHtml } from "@/src/lib/email";
 
 const NOW = 1_800_000_000_000;
 
-// A record that is recent enough not to be discarded as stale.
-function stored(overrides: Partial<BackendAlertStoredState> = {}): BackendAlertStoredState {
-  return { consecutiveFailures: 0, firstFailureAtMs: null, alerted: false, updatedAtMs: NOW, ...overrides };
+/** A record whose last observed outcome was a failure: an outage in progress. */
+function down(overrides: Partial<BackendAlertStoredState> = {}): BackendAlertStoredState {
+  return {
+    reachable: false,
+    consecutiveFailures: 1,
+    firstFailureAtMs: NOW,
+    alerted: false,
+    sendAttempts: 0,
+    updatedAtMs: NOW,
+    ...overrides,
+  };
+}
+
+/** A record whose last observed outcome was a success. */
+function up(overrides: Partial<BackendAlertStoredState> = {}): BackendAlertStoredState {
+  return {
+    reachable: true,
+    consecutiveFailures: 0,
+    firstFailureAtMs: null,
+    alerted: false,
+    sendAttempts: 0,
+    updatedAtMs: NOW,
+    ...overrides,
+  };
 }
 
 describe("backendAlertDecision", () => {
@@ -21,31 +43,43 @@ describe("backendAlertDecision", () => {
     const d = backendAlertDecision({ now: NOW, reachable: false, stored: null });
     expect(d.shouldAlert).toBe(false);
     expect(d.next.consecutiveFailures).toBe(1);
-    // The clock starts here, which is what the duration threshold is measured from.
     expect(d.next.firstFailureAtMs).toBe(NOW);
     expect(d.next.alerted).toBe(false);
   });
 
-  it("alerts once the count and the minimum outage duration are both met", () => {
-    const firstFailureAtMs = NOW - BACKEND_ALERT_MIN_OUTAGE_MS;
+  it("starts a new outage when the last thing seen was a success", () => {
     const d = backendAlertDecision({
-      now: NOW,
+      now: NOW + 60_000,
       reachable: false,
-      stored: stored({ consecutiveFailures: 1, firstFailureAtMs, updatedAtMs: firstFailureAtMs }),
+      stored: up({ consecutiveFailures: 9, alerted: true }),
+    });
+    // Nothing is inherited from before the recovery.
+    expect(d.next.consecutiveFailures).toBe(1);
+    expect(d.next.alerted).toBe(false);
+    expect(d.next.firstFailureAtMs).toBe(NOW + 60_000);
+    expect(d.shouldAlert).toBe(false);
+  });
+
+  it("alerts once the count and the minimum observed span are both met", () => {
+    const d = backendAlertDecision({
+      now: NOW + BACKEND_ALERT_MIN_OUTAGE_MS,
+      reachable: false,
+      stored: down({ consecutiveFailures: 1, firstFailureAtMs: NOW }),
     });
     expect(d.shouldAlert).toBe(true);
     expect(d.failureCount).toBe(2);
-    expect(d.outageStartedAtMs).toBe(firstFailureAtMs);
+    expect(d.outageStartedAtMs).toBe(NOW);
     expect(d.next.alerted).toBe(true);
+    expect(d.next.sendAttempts).toBe(1);
   });
 
-  it("does not alert when the count is met but the outage is still too short", () => {
+  it("does not alert when the count is met but the observed span is too short", () => {
     // Two instances can push the shared counter to the threshold within a second; that is
-    // a blip, and the duration guard is the only thing that tells them apart.
+    // a blip, and the span guard is the only thing that tells them apart.
     const d = backendAlertDecision({
-      now: NOW,
+      now: NOW + 500,
       reachable: false,
-      stored: stored({ consecutiveFailures: 1, firstFailureAtMs: NOW - 500, updatedAtMs: NOW - 500 }),
+      stored: down({ consecutiveFailures: 1, firstFailureAtMs: NOW }),
     });
     expect(d.shouldAlert).toBe(false);
     expect(d.next.consecutiveFailures).toBe(2);
@@ -53,60 +87,151 @@ describe("backendAlertDecision", () => {
 
   it("stays silent for every later failure in the same outage", () => {
     const d = backendAlertDecision({
-      now: NOW,
+      now: NOW + 10 * 60_000,
       reachable: false,
-      stored: stored({
-        consecutiveFailures: 9,
-        firstFailureAtMs: NOW - 10 * 60_000,
-        alerted: true,
-        updatedAtMs: NOW - 20_000,
-      }),
+      stored: down({ consecutiveFailures: 9, firstFailureAtMs: NOW, alerted: true, sendAttempts: 1 }),
     });
     expect(d.shouldAlert).toBe(false);
     expect(d.next.alerted).toBe(true);
+    expect(d.next.sendAttempts).toBe(1);
   });
 
   it("clears the counters and the flag on a reachable probe, without alerting", () => {
     const d = backendAlertDecision({
       now: NOW,
       reachable: true,
-      stored: stored({ consecutiveFailures: 4, firstFailureAtMs: NOW - 60_000, alerted: true }),
+      stored: down({ consecutiveFailures: 4, firstFailureAtMs: NOW - 60_000, alerted: true }),
     });
     expect(d.shouldAlert).toBe(false);
-    expect(d.next).toEqual({ consecutiveFailures: 0, firstFailureAtMs: null, alerted: false });
-    // Still reported, so a caller could state the duration -- the owner just opted out of
-    // receiving a recovery email.
+    expect(d.next).toEqual({
+      consecutiveFailures: 0,
+      firstFailureAtMs: null,
+      alerted: false,
+      sendAttempts: 0,
+    });
     expect(d.outageStartedAtMs).toBe(NOW - 60_000);
   });
 
-  it("alerts again for a later outage once a success has cleared the flag", () => {
+  // --- The three regressions the first implementation got wrong -------------------------
+
+  it("alerts when the two failures are far apart in time (sparse traffic)", () => {
+    // Regression: the first implementation discarded any record older than 15 minutes, so
+    // visitors arriving further apart than that each reset the count to 1 and a
+    // continuously-down backend was NEVER reported.
+    const first = backendAlertDecision({ now: NOW, reachable: false, stored: null });
+    expect(first.shouldAlert).toBe(false);
+
+    const twentyMinutesLater = NOW + 20 * 60_000;
+    const second = backendAlertDecision({
+      now: twentyMinutesLater,
+      reachable: false,
+      stored: { reachable: false, ...first.next, updatedAtMs: NOW },
+    });
+
+    expect(second.shouldAlert).toBe(true);
+    expect(second.failureCount).toBe(2);
+    // The outage is still dated from the first failure actually observed.
+    expect(second.outageStartedAtMs).toBe(NOW);
+  });
+
+  it("does not send a second email when traffic resumes after a long gap", () => {
+    // Regression: staleness used to clear `alerted` along with everything else, so a
+    // traffic gap mid-outage produced a second email for the same outage.
+    const alerted = down({ consecutiveFailures: 2, firstFailureAtMs: NOW, alerted: true, sendAttempts: 1 });
+
+    const afterGap = backendAlertDecision({
+      now: NOW + 60 * 60_000,
+      reachable: false,
+      stored: { ...alerted, updatedAtMs: NOW + 60_000 },
+    });
+    expect(afterGap.shouldAlert).toBe(false);
+
+    const nextProbe = backendAlertDecision({
+      now: NOW + 60 * 60_000 + 20_000,
+      reachable: false,
+      stored: { reachable: false, ...afterGap.next, updatedAtMs: NOW + 60 * 60_000 },
+    });
+    expect(nextProbe.shouldAlert).toBe(false);
+  });
+
+  it("alerts again for a genuinely separate outage after a recovery", () => {
     const recovered = backendAlertDecision({
       now: NOW,
       reachable: true,
-      stored: stored({ consecutiveFailures: 3, firstFailureAtMs: NOW - 60_000, alerted: true }),
+      stored: down({ consecutiveFailures: 3, firstFailureAtMs: NOW - 60_000, alerted: true, sendAttempts: 1 }),
     });
-    const firstFailureAtMs = NOW + 1_000;
-    const again = backendAlertDecision({
-      now: firstFailureAtMs + BACKEND_ALERT_MIN_OUTAGE_MS,
+
+    const downAgain = NOW + 10_000;
+    const first = backendAlertDecision({
+      now: downAgain,
       reachable: false,
-      stored: { ...recovered.next, firstFailureAtMs, consecutiveFailures: 1, updatedAtMs: firstFailureAtMs },
+      stored: { reachable: true, ...recovered.next, updatedAtMs: NOW },
     });
-    expect(again.shouldAlert).toBe(true);
+    expect(first.shouldAlert).toBe(false);
+
+    const second = backendAlertDecision({
+      now: downAgain + BACKEND_ALERT_MIN_OUTAGE_MS,
+      reachable: false,
+      stored: { reachable: false, ...first.next, updatedAtMs: downAgain },
+    });
+    expect(second.shouldAlert).toBe(true);
   });
 
-  it("discards a stale record so a new outage is not muted by an old flag", () => {
-    // The flag is only ever cleared by a successful probe, and alerting is
-    // visitor-triggered -- so without this a quiet spell could silence alerts for good.
-    const staleAt = NOW - BACKEND_ALERT_STALE_STATE_MS - 1;
+  // --------------------------------------------------------------------------------------
+
+  it("stops retrying a failing send after the attempt cap", () => {
+    const d = backendAlertDecision({
+      now: NOW + BACKEND_ALERT_MIN_OUTAGE_MS,
+      reachable: false,
+      stored: down({
+        consecutiveFailures: 5,
+        firstFailureAtMs: NOW,
+        // Marker was given back after each failed send, so `alerted` is false again.
+        alerted: false,
+        sendAttempts: BACKEND_ALERT_MAX_SEND_ATTEMPTS,
+      }),
+    });
+    expect(d.shouldAlert).toBe(false);
+    expect(d.next.sendAttempts).toBe(BACKEND_ALERT_MAX_SEND_ATTEMPTS);
+  });
+
+  it("still retries while under the attempt cap", () => {
+    const d = backendAlertDecision({
+      now: NOW + BACKEND_ALERT_MIN_OUTAGE_MS,
+      reachable: false,
+      stored: down({
+        consecutiveFailures: 3,
+        firstFailureAtMs: NOW,
+        alerted: false,
+        sendAttempts: 1,
+      }),
+    });
+    expect(d.shouldAlert).toBe(true);
+    expect(d.next.sendAttempts).toBe(2);
+  });
+
+  it("abandons an absurdly old record rather than trusting its flag forever", () => {
+    const ancient = NOW - BACKEND_ALERT_STALE_STATE_MS - 1;
     const d = backendAlertDecision({
       now: NOW,
       reachable: false,
-      stored: stored({ consecutiveFailures: 7, firstFailureAtMs: staleAt, alerted: true, updatedAtMs: staleAt }),
+      stored: down({ consecutiveFailures: 7, firstFailureAtMs: ancient, alerted: true, updatedAtMs: ancient }),
     });
     expect(d.next.consecutiveFailures).toBe(1);
     expect(d.next.alerted).toBe(false);
-    // And it reports no invented multi-hour duration.
     expect(d.outageStartedAtMs).toBe(NOW);
+  });
+
+  it("keeps a record that is merely old, up to the safety net", () => {
+    // The whole point of the redesign: hours of quiet must not reset a real outage.
+    const hoursAgo = NOW - 6 * 60 * 60_000;
+    const d = backendAlertDecision({
+      now: NOW,
+      reachable: false,
+      stored: down({ consecutiveFailures: 1, firstFailureAtMs: hoursAgo, updatedAtMs: hoursAgo }),
+    });
+    expect(d.shouldAlert).toBe(true);
+    expect(d.failureCount).toBe(2);
   });
 
   it("treats malformed, negative and future stored values as absent", () => {
@@ -114,40 +239,42 @@ describe("backendAlertDecision", () => {
       const d = backendAlertDecision({
         now: NOW,
         reachable: false,
-        stored: stored({ consecutiveFailures: bad }),
+        stored: down({ consecutiveFailures: bad }),
       });
       expect(d.next.consecutiveFailures).toBe(1);
       expect(d.shouldAlert).toBe(false);
     }
-    // A future updatedAtMs (clock skew) discards the record rather than locking out.
+    // A future updatedAtMs (clock skew) abandons the record rather than locking out.
     const skewed = backendAlertDecision({
       now: NOW,
       reachable: false,
-      stored: stored({ consecutiveFailures: 5, alerted: true, updatedAtMs: NOW + 60_000 }),
+      stored: down({ consecutiveFailures: 5, alerted: true, updatedAtMs: NOW + 60_000 }),
     });
     expect(skewed.next.consecutiveFailures).toBe(1);
     expect(skewed.next.alerted).toBe(false);
   });
 
-  it("never reports a negative outage length when the stored start is in the future", () => {
+  it("never reports a negative observed span when the stored start is in the future", () => {
     const d = backendAlertDecision({
       now: NOW,
       reachable: false,
-      stored: stored({ consecutiveFailures: 1, firstFailureAtMs: NOW + 90_000 }),
+      stored: down({ consecutiveFailures: 1, firstFailureAtMs: NOW + 90_000 }),
     });
     expect(d.shouldAlert).toBe(false);
     expect(d.outageStartedAtMs).toBe(NOW);
   });
 
-  it("only alerts once across a run of failing probes", () => {
-    // Walk a real outage forward a probe at a time and count the emails.
-    let state = stored({ updatedAtMs: NOW - 1 });
+  it("only alerts once across a long run of failing probes", () => {
+    // Walk a real outage forward a probe at a time and count the emails. Steps of 20
+    // minutes, deliberately far longer than any short-lived window, so a time-based reset
+    // would show up here as extra emails.
+    let state: BackendAlertStoredState | null = null;
     let alerts = 0;
-    for (let i = 0; i < 20; i += 1) {
-      const now = NOW + i * 20_000;
+    for (let i = 0; i < 30; i += 1) {
+      const now = NOW + i * 20 * 60_000;
       const d = backendAlertDecision({ now, reachable: false, stored: state });
       if (d.shouldAlert) alerts += 1;
-      state = { ...d.next, updatedAtMs: now };
+      state = { reachable: false, ...d.next, updatedAtMs: now };
     }
     expect(alerts).toBe(1);
   });
@@ -162,8 +289,6 @@ describe("backendProbeReasonLabel", () => {
   });
 
   it("does not echo an unrecognized reason", () => {
-    // The gloss is a fixed string, so an unexpected value cannot smuggle upstream text
-    // (a resolved address, a token-bearing URL) into the email.
     const label = backendProbeReasonLabel("getaddrinfo ENOTFOUND secret.internal");
     expect(label).toBe("Unreachable for an unrecognized reason");
     expect(label).not.toContain("secret.internal");
@@ -195,11 +320,21 @@ describe("buildBackendAlertHtml", () => {
   it("carries what the owner needs to triage", () => {
     const html = buildBackendAlertHtml(ctx);
     expect(html).toContain("Backend worker unreachable");
-    expect(html).toContain("Consecutive failed probes:</strong> 3");
+    expect(html).toContain("Failed probes seen:</strong> 3");
     expect(html).toContain(new Date(ctx.detectedAtMs).toISOString());
     expect(html).toContain(new Date(ctx.outageStartedAtMs).toISOString());
     expect(html).toContain("4m 00s");
     expect(html).toContain("timed out");
+  });
+
+  it("describes the span as observed samples, never as a measured outage", () => {
+    // The backend is only probed when someone loads the app, so it may have recovered and
+    // failed again between two observed failures. The email must not claim otherwise.
+    const html = buildBackendAlertHtml(ctx);
+    expect(html).toContain("First failure seen");
+    expect(html).toContain("Failures seen across");
+    expect(html).toContain("samples rather than monitoring");
+    expect(html).not.toMatch(/Down for|Outage started/);
   });
 
   it("says that no further email is coming, so silence is not read as recovery", () => {
@@ -210,10 +345,10 @@ describe("buildBackendAlertHtml", () => {
     expect(buildBackendAlertHtml(ctx)).toContain("This is an automated notification from");
   });
 
-  it("omits the outage rows when no start time is known", () => {
+  it("omits the span rows when no start time is known", () => {
     const html = buildBackendAlertHtml({ ...ctx, outageStartedAtMs: null });
-    expect(html).not.toContain("Outage started");
-    expect(html).not.toContain("Down for");
+    expect(html).not.toContain("First failure seen");
+    expect(html).not.toContain("Failures seen across");
   });
 
   it("escapes an unexpected reason rather than injecting it", () => {
@@ -222,8 +357,6 @@ describe("buildBackendAlertHtml", () => {
   });
 
   it("leaks no secret into the body", () => {
-    // The probe target is included on purpose -- /healthz is unauthenticated and it is
-    // the one thing identifying which worker. Credentials are not.
     const html = buildBackendAlertHtml(ctx);
     for (const secret of [
       process.env.WEBETU_INTERNAL_API_KEY,

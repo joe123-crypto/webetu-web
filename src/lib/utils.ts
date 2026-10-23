@@ -373,11 +373,18 @@ export function liveRestaurantFromWorkerEntry(entry: any) {
 export const BACKEND_ALERT_FAILURES_BEFORE_ALERT = 2;
 export const BACKEND_ALERT_MIN_OUTAGE_MS = 20_000;
 
-// Stored state older than this is not evidence about now. Alerting is visitor-triggered,
-// so after a quiet spell the doc can still hold an outage whose `alerted` flag no
-// successful probe ever cleared -- reusing it would mute a genuinely new outage for good
-// and report an invented multi-day duration. Past this age the record is discarded.
-export const BACKEND_ALERT_STALE_STATE_MS = 15 * 60_000;
+// Outer safety net, not the rule that decides whether an outage is new -- that is the last
+// observed outcome (see backendAlertDecision). A record this old is abandoned so a flag
+// stranded by some unforeseen path cannot mute alerting forever. It is deliberately far
+// longer than any plausible gap in traffic: a shorter window would reset the failure
+// counters of a real outage just because nobody happened to visit, which is the one thing
+// this must not do.
+export const BACKEND_ALERT_STALE_STATE_MS = 24 * 60 * 60_000;
+
+// How many times one outage may re-attempt a failed send before giving up. Delivery is
+// retried by clearing the `alerted` flag, so without a cap a permanently broken sender
+// would attempt a send on every probe for the length of the outage.
+export const BACKEND_ALERT_MAX_SEND_ATTEMPTS = 5;
 
 // Why a probe failed, in coarse buckets. The probe deliberately discards the underlying
 // error message: it can carry the worker's base URL or a resolved address, and these
@@ -391,9 +398,13 @@ export type BackendProbeReason =
   | `http_${number}`;
 
 export type BackendAlertStoredState = {
+  // The last outcome actually observed. This -- not elapsed time -- is what says whether a
+  // failed probe continues an outage or starts one.
+  reachable?: boolean | null;
   consecutiveFailures?: number | null;
   firstFailureAtMs?: number | null;
   alerted?: boolean | null;
+  sendAttempts?: number | null;
   updatedAtMs?: number | null;
 };
 
@@ -404,8 +415,10 @@ export type BackendAlertDecision = {
     consecutiveFailures: number;
     firstFailureAtMs: number | null;
     alerted: boolean;
+    sendAttempts: number;
   };
-  // Diagnostics for the email body.
+  // Diagnostics for the email body. `outageStartedAtMs` is the first failure this app
+  // *observed*, which is not necessarily when the backend went down.
   outageStartedAtMs: number | null;
   failureCount: number;
 };
@@ -415,8 +428,15 @@ function finiteNumber(value: unknown): number | null {
 }
 
 // Decide whether this probe outcome warrants an email, given what is on record. Pure so
-// the threshold and staleness logic is testable without Firestore -- same split as
+// the threshold logic is testable without Firestore -- same split as
 // webetuVerifyThrottleDecision above.
+//
+// Whether a failed probe continues an outage or starts a new one is decided by the last
+// outcome this app *observed*, never by how long ago it observed it. Alerting is
+// visitor-triggered, so a gap in the record means nobody looked -- not that the backend
+// recovered. Deciding by elapsed time instead would reset the failure counters of a real
+// outage whenever traffic went quiet, which on a low-traffic site means never alerting at
+// all, and would clear the `alerted` flag mid-outage and send a second email.
 //
 // A reachable probe is what ends an outage: it clears the counters and the `alerted` flag,
 // which is what lets the *next* outage alert again. It never emails (the owner opted out
@@ -429,31 +449,39 @@ export function backendAlertDecision(input: {
   const { now, reachable } = input;
   const raw = input.stored ?? null;
 
-  // Discard the whole record when it is too old to describe the present, or when it is
-  // stamped in the future (clock skew). Treating it as absent restarts the narrative
-  // rather than inheriting a stale flag.
+  // Abandon a record only when it is absurdly old, or stamped in the future (clock skew).
+  // This is a safety net against a stranded flag, not the outage-identity rule.
   const updatedAtMs = finiteNumber(raw?.updatedAtMs);
-  const fresh =
+  const usable =
     raw !== null &&
     updatedAtMs !== null &&
     updatedAtMs <= now &&
     now - updatedAtMs < BACKEND_ALERT_STALE_STATE_MS;
-  const stored = fresh ? raw : null;
-
-  const storedFailuresRaw = finiteNumber(stored?.consecutiveFailures);
-  const storedFailures =
-    storedFailuresRaw !== null && storedFailuresRaw > 0 ? Math.floor(storedFailuresRaw) : 0;
-  const alerted = stored?.alerted === true;
-  const storedFirstFailureAtMs = finiteNumber(stored?.firstFailureAtMs);
+  const stored = usable ? raw : null;
 
   if (reachable) {
+    const storedFirstFailureAtMs = finiteNumber(stored?.firstFailureAtMs);
     return {
       shouldAlert: false,
-      next: { consecutiveFailures: 0, firstFailureAtMs: null, alerted: false },
+      next: { consecutiveFailures: 0, firstFailureAtMs: null, alerted: false, sendAttempts: 0 },
       outageStartedAtMs: storedFirstFailureAtMs,
       failureCount: 0,
     };
   }
+
+  // The failure continues an outage only if the last thing we saw was also a failure.
+  // Anything else -- a reachable probe, no record at all, an abandoned record -- means this
+  // probe is the first evidence of a new outage, so nothing is carried over.
+  const prior = stored?.reachable === false ? stored : null;
+
+  const storedFailuresRaw = finiteNumber(prior?.consecutiveFailures);
+  const storedFailures =
+    storedFailuresRaw !== null && storedFailuresRaw > 0 ? Math.floor(storedFailuresRaw) : 0;
+  const alerted = prior?.alerted === true;
+  const storedAttemptsRaw = finiteNumber(prior?.sendAttempts);
+  const storedAttempts =
+    storedAttemptsRaw !== null && storedAttemptsRaw > 0 ? Math.floor(storedAttemptsRaw) : 0;
+  const storedFirstFailureAtMs = finiteNumber(prior?.firstFailureAtMs);
 
   const failureCount = storedFailures + 1;
   // A first-failure stamp in the future would make the outage look negative-length, so it
@@ -461,12 +489,13 @@ export function backendAlertDecision(input: {
   const firstFailureAtMs =
     storedFirstFailureAtMs !== null && storedFirstFailureAtMs <= now ? storedFirstFailureAtMs : now;
   // Clamped, so skew between instances fails toward *not* emailing.
-  const outageMs = Math.max(0, now - firstFailureAtMs);
+  const observedSpanMs = Math.max(0, now - firstFailureAtMs);
 
   const shouldAlert =
     !alerted &&
+    storedAttempts < BACKEND_ALERT_MAX_SEND_ATTEMPTS &&
     failureCount >= BACKEND_ALERT_FAILURES_BEFORE_ALERT &&
-    outageMs >= BACKEND_ALERT_MIN_OUTAGE_MS;
+    observedSpanMs >= BACKEND_ALERT_MIN_OUTAGE_MS;
 
   return {
     shouldAlert,
@@ -474,7 +503,9 @@ export function backendAlertDecision(input: {
       consecutiveFailures: failureCount,
       firstFailureAtMs,
       // Once an email has gone out, every later failure in the same outage stays silent.
+      // Cleared again only by a reachable probe, or by a send that failed and is retried.
       alerted: alerted || shouldAlert,
+      sendAttempts: shouldAlert ? storedAttempts + 1 : storedAttempts,
     },
     outageStartedAtMs: firstFailureAtMs,
     failureCount,

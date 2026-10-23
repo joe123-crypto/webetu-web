@@ -72,18 +72,49 @@ async function currentProbe(): Promise<{ probe: Probe; fresh: boolean }> {
 }
 
 /**
+ * How often a *healthy* probe is handed to the alert bookkeeping.
+ *
+ * Failures are always reported: they are the evidence an alert is built from. A healthy
+ * probe carries almost no information -- it writes the same "nothing is wrong" record every
+ * time -- so reporting every one of them would mean a Firestore write per cache window, for
+ * every instance, forever. That is thousands of identical writes a day on a site where
+ * nothing is happening.
+ *
+ * What a healthy probe does have to do promptly is end an outage, so a change of state is
+ * reported immediately and only an unbroken run of healthy probes is throttled.
+ */
+const HEALTHY_REPORT_INTERVAL_MS = 10 * 60_000;
+
+let lastReportedAt = 0;
+/** null on a cold instance, which therefore always reports its first probe. */
+let lastReportedReachable: boolean | null = null;
+
+function shouldReport(result: Probe, now: number) {
+  if (!result.reachable) return true;
+  if (lastReportedReachable !== true) return true;
+  return now - lastReportedAt >= HEALTHY_REPORT_INTERVAL_MS;
+}
+
+/**
  * Hand a probe outcome to the downtime-alert bookkeeping, after the response has gone out.
  *
- * Only freshly fetched probes are reported. A cache hit is not new evidence, so counting
- * one would let a single visitor hitting refresh inflate the consecutive-failure count on
- * its own -- and skipping them bounds Firestore writes to at most one transaction per
- * instance per cache window, however many browsers are polling.
+ * Only freshly fetched probes get here. A cache hit is not new evidence, so counting one
+ * would let a single visitor hitting refresh inflate the failure count on its own -- and
+ * skipping them bounds the work to at most one report per instance per cache window,
+ * however many browsers are polling.
  *
  * The import is dynamic on purpose. It keeps firebase-admin out of the module graph of the
  * app's hottest unauthenticated route, which matters for cold-start latency and for this
  * route staying importable in tests.
  */
 function scheduleAlertBookkeeping(result: Probe) {
+  const now = Date.now();
+  if (!shouldReport(result, now)) return;
+  // Claimed before scheduling, so two concurrent requests on this instance cannot both
+  // schedule a report for the same probe.
+  lastReportedAt = now;
+  lastReportedReachable = result.reachable;
+
   runAfterResponse(async () => {
     const { recordBackendProbe } = await import("@/src/domains/alerts");
     await recordBackendProbe({

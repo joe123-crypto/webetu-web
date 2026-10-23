@@ -1,8 +1,12 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { getFirestoreDb } from "@/src/firebase/admin";
 import { config } from "@/src/config";
 import { sendBackendAlertEmail } from "@/src/lib/email";
-import { backendAlertDecision, type BackendAlertDecision } from "@/src/lib/utils";
+import {
+  backendAlertDecision,
+  BACKEND_ALERT_MAX_SEND_ATTEMPTS,
+  type BackendAlertDecision,
+} from "@/src/lib/utils";
 
 // One global doc -- this is about the shared backend worker, not about any user. Same
 // "named collection + known doc id" shape as webetuCatalogMeta/status.
@@ -61,9 +65,13 @@ export async function recordBackendProbe(input: {
         now,
         reachable: input.reachable,
         stored: {
+          // `reachable` is what decides whether this failure continues the stored outage
+          // or starts a new one, so it must be read back, not just written.
+          reachable: data.reachable,
           consecutiveFailures: data.consecutiveFailures,
           firstFailureAtMs: data.firstFailureAtMs,
           alerted: data.alerted,
+          sendAttempts: data.sendAttempts,
           updatedAtMs: data.updatedAtMs,
         },
       });
@@ -75,6 +83,7 @@ export async function recordBackendProbe(input: {
           consecutiveFailures: decision.next.consecutiveFailures,
           firstFailureAtMs: decision.next.firstFailureAtMs,
           alerted: decision.next.alerted,
+          sendAttempts: decision.next.sendAttempts,
           // Plain millis drive every comparison in backendAlertDecision, because
           // serverTimestamp() cannot be read back inside the transaction that writes it --
           // the decision would end up comparing the server's clock against this instance's
@@ -89,21 +98,59 @@ export async function recordBackendProbe(input: {
 
     // Sent after the commit, never inside the callback: a transaction can re-run, which
     // would double-send, and an outbound HTTP call would hold the read lock for the length
-    // of a Resend round-trip. The cost of this ordering is that delivery is at-most-once --
-    // a Resend failure loses this alert until the staleness window resets the record.
+    // of a Resend round-trip.
     if (!decision || !(decision as BackendAlertDecision).shouldAlert) return;
-    const { failureCount, outageStartedAtMs } = decision as BackendAlertDecision;
+    const { failureCount, outageStartedAtMs, next } = decision as BackendAlertDecision;
     console.log(
-      `[alert] backend unreachable (${failureCount} consecutive failures) — emailing the owner.`,
+      `[alert] backend unreachable (${failureCount} failed probes seen) — emailing the owner.`,
     );
-    await sendBackendAlertEmail({
+    const delivered = await sendBackendAlertEmail({
       detectedAtMs: now,
       outageStartedAtMs,
       failureCount,
       reason: input.reason,
     });
+
+    // The "sent" marker is committed before the send, so a rejection would otherwise mark
+    // this outage alerted and never mail at all. Giving the marker back lets the next probe
+    // retry. Attempts are capped in the decision helper, so a permanently broken sender
+    // cannot keep retrying for the length of the outage.
+    if (!delivered) {
+      console.error(
+        `[alert] alert email was not delivered (attempt ${next.sendAttempts} of ` +
+          `${BACKEND_ALERT_MAX_SEND_ATTEMPTS}) — clearing the sent marker so the next probe retries.`,
+      );
+      await releaseAlertedMarker(ref, outageStartedAtMs);
+    }
   } catch (err) {
     // Best-effort — never propagate.
     console.error("[alert] recordBackendProbe error:", err);
   }
+}
+
+/**
+ * Undo the `alerted` marker after a failed send, so the next failed probe tries again.
+ *
+ * Narrowly guarded, because this runs after the main transaction committed and the world
+ * may have moved on: it only clears the marker if the record still describes the *same*
+ * outage (same first-failure stamp) and the backend is still unreachable. Without that, a
+ * recovery that landed in between would be overwritten and a finished outage resurrected.
+ *
+ * The attempt counter is deliberately left alone -- it is what bounds the retries.
+ */
+async function releaseAlertedMarker(
+  ref: DocumentReference,
+  outageStartedAtMs: number | null,
+): Promise<void> {
+  if (outageStartedAtMs === null) return;
+  const db = getFirestoreDb();
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(ref);
+    const data = doc.data();
+    if (!data) return;
+    if (data.reachable !== false) return;
+    if (data.firstFailureAtMs !== outageStartedAtMs) return;
+    if (data.alerted !== true) return;
+    t.set(ref, { alerted: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  });
 }
