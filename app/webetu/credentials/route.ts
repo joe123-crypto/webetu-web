@@ -4,7 +4,6 @@ import { verifyFirebaseRequest } from "@/src/security/session";
 import {
   consumeWebetuVerifyAttempt,
   refundWebetuVerifyAttempt,
-  resetWebetuVerifyAttempts,
   saveWebetuCredentials,
 } from "@/src/domains/webetu";
 import {
@@ -95,13 +94,10 @@ export async function POST(req: NextRequest) {
     }
     // "valid" or "skip" -> proceed to save.
 
+    // The verify budget is not cleared after a success: a reset here would let a user
+    // interleave their own working credentials with guesses at someone else's account
+    // and never run out. The window expiring is what frees it.
     const result = await saveWebetuCredentials(decoded.uid, body);
-    // Credentials are confirmed good, so clear the budget: a user who mistyped a few
-    // times before getting it right should not stay throttled. Best-effort -- the save
-    // already succeeded and must not fail on a bookkeeping error.
-    if (willVerify && verdict === "valid") {
-      await resetWebetuVerifyAttempts(decoded.uid).catch(() => {});
-    }
     return NextResponse.json(result);
   } catch (err: unknown) {
     const error = err as Error & { status?: number };

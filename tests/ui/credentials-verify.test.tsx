@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   classifyVerifyResponse,
   webetuVerifyThrottleDecision,
+  webetuVerifyDailyDecision,
   WEBETU_VERIFY_MAX_ATTEMPTS,
   WEBETU_VERIFY_WINDOW_MS,
+  WEBETU_VERIFY_DAILY_MAX_ATTEMPTS,
+  WEBETU_VERIFY_DAILY_WINDOW_MS,
 } from "@/src/lib/utils";
 
 // classifyVerifyResponse decides save-vs-block for the credentials save route:
@@ -121,5 +124,52 @@ describe("webetuVerifyThrottleDecision", () => {
     expect(
       webetuVerifyThrottleDecision({ now, windowStartMs: now - 1000, count: -5 })
     ).toEqual({ allowed: true, count: 1, windowReset: false });
+  });
+});
+
+// The daily cap bounds the total: the short window alone resets every 10 minutes, and
+// nothing resets either counter after a successful verify.
+describe("webetuVerifyDailyDecision", () => {
+  const now = 1_700_000_000_000;
+
+  it("starts a fresh daily window on the first attempt", () => {
+    expect(webetuVerifyDailyDecision({ now, windowStartMs: null, count: null })).toEqual({
+      allowed: true,
+      count: 1,
+      windowReset: true,
+    });
+  });
+
+  it("counts attempts across many short windows within a day", () => {
+    const start = now - 5 * WEBETU_VERIFY_WINDOW_MS;
+    expect(webetuVerifyDailyDecision({ now, windowStartMs: start, count: 12 })).toEqual({
+      allowed: true,
+      count: 13,
+      windowReset: false,
+    });
+  });
+
+  it("blocks once the daily budget is spent, even after the short window resets", () => {
+    const start = now - 2 * 60 * 60 * 1000;
+    expect(
+      webetuVerifyDailyDecision({ now, windowStartMs: start, count: WEBETU_VERIFY_DAILY_MAX_ATTEMPTS })
+    ).toMatchObject({ allowed: false });
+    // The short window has long expired, so it alone would allow this attempt.
+    expect(
+      webetuVerifyThrottleDecision({ now, windowStartMs: start, count: WEBETU_VERIFY_MAX_ATTEMPTS })
+    ).toMatchObject({ allowed: true });
+  });
+
+  it("rolls over after 24 hours", () => {
+    const start = now - WEBETU_VERIFY_DAILY_WINDOW_MS;
+    expect(
+      webetuVerifyDailyDecision({ now, windowStartMs: start, count: WEBETU_VERIFY_DAILY_MAX_ATTEMPTS })
+    ).toEqual({ allowed: true, count: 1, windowReset: true });
+  });
+
+  it("rolls over rather than locking out when the window start is in the future", () => {
+    expect(
+      webetuVerifyDailyDecision({ now, windowStartMs: now + 60_000, count: WEBETU_VERIFY_DAILY_MAX_ATTEMPTS })
+    ).toEqual({ allowed: true, count: 1, windowReset: true });
   });
 });

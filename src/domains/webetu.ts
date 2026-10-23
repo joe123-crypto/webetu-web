@@ -15,6 +15,7 @@ import {
   webetuLocation,
   webetuLocationIsStale,
   webetuVerifyThrottleDecision,
+  webetuVerifyDailyDecision,
   WEBETU_FALLBACK_RESTAURANT,
   type WebetuLocation,
 } from "@/src/lib/utils";
@@ -61,12 +62,13 @@ export async function getWebetuUsername(uid: string): Promise<string | null> {
 // Per-user rate limit for credential verification. Verifying makes our backend attempt a
 // Webetu login with whatever pair the caller supplies, so without a cap a signed-in user
 // could brute-force other students' Webetu accounts through our server. Counted in
-// webetuVerifyAttempts/{uid} as a fixed window.
+// webetuVerifyAttempts/{uid} as two fixed windows: a short one (count/windowStartAt)
+// against bursts and a daily one (dayCount/dayWindowStartAt) bounding the total.
 //
-// Throws 429 when the window's budget is spent. The caller consumes an attempt only when
-// a real verification is about to happen (never when verification is skipped), and calls
-// resetWebetuVerifyAttempts after a success so an honest user who mistyped is not left
-// throttled.
+// Throws 429 when either budget is spent. The caller consumes an attempt only when a
+// real verification is about to happen (never when verification is skipped). The budget
+// is deliberately NOT cleared after a successful verify: otherwise a user could alternate
+// their own working credentials with guesses at someone else's and never run out.
 export async function consumeWebetuVerifyAttempt(uid: string): Promise<void> {
   const safeUid = validateFirebaseUid(uid);
   const db = getFirestoreDb();
@@ -81,10 +83,17 @@ export async function consumeWebetuVerifyAttempt(uid: string): Promise<void> {
       windowStartMs: data.windowStartAt?.toMillis?.() ?? null,
       count: typeof data.count === "number" ? data.count : null,
     });
-    if (!decision.allowed) {
+    const daily = webetuVerifyDailyDecision({
+      now,
+      windowStartMs: data.dayWindowStartAt?.toMillis?.() ?? null,
+      count: typeof data.dayCount === "number" ? data.dayCount : null,
+    });
+    if (!decision.allowed || !daily.allowed) {
       throw httpError(
         429,
-        "Too many verification attempts. Please wait a few minutes and try again."
+        daily.allowed
+          ? "Too many verification attempts. Please wait a few minutes and try again."
+          : "Too many verification attempts today. Please try again tomorrow."
       );
     }
     t.set(
@@ -95,19 +104,15 @@ export async function consumeWebetuVerifyAttempt(uid: string): Promise<void> {
         ...(decision.windowReset
           ? { windowStartAt: FieldValue.serverTimestamp() }
           : {}),
+        dayCount: daily.count,
+        ...(daily.windowReset
+          ? { dayWindowStartAt: FieldValue.serverTimestamp() }
+          : {}),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
   });
-}
-
-// Clear a user's verify budget after a confirmed-good login, so earlier typos do not
-// count against someone who has demonstrably supplied working credentials.
-export async function resetWebetuVerifyAttempts(uid: string): Promise<void> {
-  const safeUid = validateFirebaseUid(uid);
-  const db = getFirestoreDb();
-  await db.collection("webetuVerifyAttempts").doc(safeUid).delete();
 }
 
 // Give an attempt back when verification produced no verdict (worker down, timeout).
@@ -121,12 +126,16 @@ export async function refundWebetuVerifyAttempt(uid: string): Promise<void> {
   await db.runTransaction(async (t) => {
     const doc = await t.get(ref);
     if (!doc.exists) return;
-    const current = doc.data()?.count;
-    if (typeof current !== "number" || current <= 0) return;
-    t.update(ref, {
-      count: Math.max(0, current - 1),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const data = doc.data() || {};
+    const update: Record<string, unknown> = {};
+    if (typeof data.count === "number" && data.count > 0) {
+      update.count = Math.max(0, data.count - 1);
+    }
+    if (typeof data.dayCount === "number" && data.dayCount > 0) {
+      update.dayCount = Math.max(0, data.dayCount - 1);
+    }
+    if (Object.keys(update).length === 0) return;
+    t.update(ref, { ...update, updatedAt: FieldValue.serverTimestamp() });
   });
 }
 
