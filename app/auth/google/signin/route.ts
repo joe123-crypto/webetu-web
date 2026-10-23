@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signState } from "@/src/security/crypto";
 import { config, assertPublicBaseUrl, GOOGLE_SIGNIN_SCOPES, AUTH_URL } from "@/src/config";
-import { googleSigninNonceCookieHeader } from "@/src/security/session";
+import { assertSameOriginJsonRequest, googleSigninNonceCookieHeader } from "@/src/security/session";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   try {
     assertPublicBaseUrl();
+    assertSameOriginJsonRequest(req);
 
     const body = await req.json().catch(() => ({}));
     const next = String(body.next ?? "/").trim();

@@ -9,7 +9,11 @@ import {
 } from "@/src/config";
 import { httpError } from "@/src/lib/utils";
 import { verifySigninState } from "@/src/security/crypto";
-import { clearGoogleSigninNonceCookieHeader, parseCookies } from "@/src/security/session";
+import {
+  assertSameOriginJsonRequest,
+  clearGoogleSigninNonceCookieHeader,
+  parseCookies,
+} from "@/src/security/session";
 
 export const runtime = "nodejs";
 
@@ -28,6 +32,7 @@ export async function POST(req: NextRequest) {
   try {
     assertPublicBaseUrl();
     requireConfig(["clientId", "clientSecret"]);
+    assertSameOriginJsonRequest(req);
 
     const body = await req.json().catch(() => ({}));
     const code = String(body.code ?? "").trim();

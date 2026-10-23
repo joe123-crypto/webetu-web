@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyFirebaseIdToken, verifyFirebaseRequest, sessionCookieHeader } from "@/src/security/session";
+import {
+  assertSameOriginJsonRequest,
+  verifyFirebaseIdToken,
+  verifyFirebaseRequest,
+  sessionCookieHeader,
+} from "@/src/security/session";
 import { getFirebaseAdminAuth } from "@/src/firebase/admin";
 import { getOrCreateUserAccount } from "@/src/domains/users";
 import { SESSION_COOKIE_MAX_AGE_SECONDS } from "@/src/config";
@@ -27,6 +32,9 @@ export async function POST(req: NextRequest) {
   const requestId = crypto.randomUUID();
   let stage = "read_request";
   try {
+    // Without this, a cross-site form could post an attacker's own ID token here and
+    // sign the victim's browser into the attacker's account (login CSRF).
+    assertSameOriginJsonRequest(req);
     const body = await req.json().catch(() => ({}));
     if (!body.idToken) throw httpError(400, "idToken is required.");
 

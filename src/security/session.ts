@@ -127,3 +127,40 @@ export function verifyInternalApiKey(req: NextRequest) {
     throw httpError(403, "Forbidden: invalid internal API key.");
   }
 }
+
+function originOf(url: string) {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+// CSRF guard for auth endpoints that create or change a session without needing an
+// existing session cookie (so SameSite does not protect them). A cross-site HTML form
+// can POST a text/plain body that still parses as JSON, so:
+//   - require a JSON content type: cross-site, that forces a CORS preflight the
+//     browser will not pass, so a form cannot send it;
+//   - reject an Origin (or Sec-Fetch-Site) that says the request came from another site.
+// Every legitimate caller is this app's own fetch(), which satisfies both.
+export function assertSameOriginJsonRequest(req: {
+  headers: Headers;
+  nextUrl: { origin: string };
+}) {
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!/^application\/json(\s*;|$)/i.test(contentType.trim())) {
+    throw httpError(415, "Expected a JSON request.");
+  }
+  const origin = req.headers.get("origin");
+  if (origin) {
+    const allowed = new Set(
+      [req.nextUrl.origin, originOf(config.publicBaseUrl)].filter(Boolean) as string[]
+    );
+    if (!allowed.has(origin)) throw httpError(403, "Cross-site request refused.");
+    return;
+  }
+  const site = req.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") {
+    throw httpError(403, "Cross-site request refused.");
+  }
+}
