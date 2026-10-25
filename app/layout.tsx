@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { BackendStatus } from "@/app/_components/backend-status";
 import { WhatsAppButton } from "@/app/_components/whatsapp-button";
+import { ServiceWorker } from "@/app/_components/service-worker";
 import { SITE_IMAGE, SITE_NAME, SITE_URL } from "@/src/lib/site-metadata";
 import "./globals.css";
 
@@ -12,6 +13,15 @@ export const metadata: Metadata = {
   metadataBase: SITE_URL,
   title: SITE_NAME,
   description,
+  applicationName: "AWRS",
+  appleWebApp: {
+    capable: true,
+    title: "AWRS",
+    statusBarStyle: "default",
+  },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
   openGraph: {
     title: SITE_NAME,
     description,
@@ -29,6 +39,10 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  themeColor: "#478f77",
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -42,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Same reasoning as the badge above: one copy, pinned to the opposite
             corner, so help is in the same place on every route. */}
         <WhatsAppButton />
+        <ServiceWorker />
         <Analytics />
       </body>
     </html>
