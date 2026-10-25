@@ -26,7 +26,7 @@ describe("parseOnboardingStep", () => {
 });
 
 describe("furthestReachableStep", () => {
-  it("keeps users on settings until credentials are saved", () => {
+  it("keeps users on vault until credentials are saved", () => {
     expect(furthestReachableStep(nothingDone)).toBe(1);
     // A chosen restaurant alone doesn't unlock anything: steps go in order.
     expect(furthestReachableStep({ credentialsSaved: false, restaurantChosen: true })).toBe(1);

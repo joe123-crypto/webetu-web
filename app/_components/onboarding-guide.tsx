@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Settings, Utensils } from "lucide-react";
+import { Check, Vault, Utensils } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   CREDENTIALS_STATUS_EVENT,
@@ -19,10 +19,10 @@ type OnboardingStep = {
 
 const STEPS: ReadonlyArray<OnboardingStep> = [
   {
-    label: "Settings",
+    label: "Vault",
     hint: "Save your Webetu username and password so we can reserve meals for you automatically.",
     pending: "Save your credentials to continue.",
-    icon: Settings,
+    icon: Vault,
   },
   {
     label: "Restaurants",

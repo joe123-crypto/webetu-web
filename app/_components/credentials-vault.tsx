@@ -10,7 +10,7 @@ export type CredentialsVaultProps = {
 };
 
 // Client logic for the Webetu credentials vault. Colocated with the markup so
-// the section can be reused (settings page and onboarding) without duplicating
+// the section can be reused (vault page and onboarding) without duplicating
 // the behavior. The script is self-contained: it queries the data-* hooks below
 // and runs on initial HTML load. After a save or revoke it announces the new
 // status as a DOM event so the onboarding guide can react.
@@ -122,7 +122,7 @@ const vaultScript = `
 `;
 
 // The Credentials Vault section: save/update/revoke Webetu credentials used for
-// automatic meal reservations. Rendered on the settings page and during onboarding.
+// automatic meal reservations. Rendered on the vault page and during onboarding.
 export function CredentialsVault({ status, savedUsername }: CredentialsVaultProps) {
   const webetuConfigured = !!status?.configured;
   const webetuLabel = webetuConfigured

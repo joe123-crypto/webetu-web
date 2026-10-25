@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Home,
+  Vault,
   Menu,
   Settings,
   Utensils,
@@ -13,6 +14,7 @@ import {
 export type DashboardSection =
   | "overview"
   | "meal-reservation"
+  | "vault"
   | "settings";
 
 type DashboardNavMenuProps = {
@@ -28,6 +30,7 @@ const navItems: ReadonlyArray<{
 }> = [
   { key: "overview", label: "Overview", href: "", icon: Home },
   { key: "meal-reservation", label: "Restaurants", href: "/meal-reservation", icon: Utensils },
+  { key: "vault", label: "Vault", href: "/vault", icon: Vault },
   { key: "settings", label: "Settings", href: "/settings", icon: Settings },
 ];
 
