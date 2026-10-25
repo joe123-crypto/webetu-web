@@ -106,8 +106,8 @@ describe("RestaurantPicker", () => {
     mountWithScript(<RestaurantPicker />);
 
     await waitFor(() => expect(option("fallback")).toHaveAttribute("aria-pressed", "true"));
-    expect(pillLabel("[data-restaurant-status]")).toBe("Fallback Restaurant");
-    expect(document.querySelector("[data-restaurant-panel] .restaurant-option")).toBeNull();
+    expect(document.body.textContent).not.toContain("Default Restaurant");
+    expect(document.querySelector("[data-restaurant-status]")).toBeNull();
   });
 
   it("does not present the fallback as a choice when an explicit pick is required", async () => {
@@ -116,7 +116,7 @@ describe("RestaurantPicker", () => {
 
     await waitFor(() => expect(option("fallback")).not.toBeNull());
     expect(option("fallback")).toHaveAttribute("aria-pressed", "false");
-    expect(pillLabel("[data-restaurant-status]")).toBe("Not set");
+    expect(option("campus-a")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("saves a selection and announces it", async () => {
@@ -134,7 +134,7 @@ describe("RestaurantPicker", () => {
       expect.objectContaining({ method: "POST", body: JSON.stringify({ restaurant: chosen }) }),
     );
     expect(option("campus-a")).toHaveAttribute("aria-pressed", "true");
-    expect(pillLabel("[data-restaurant-status]")).toBe("Campus A");
+    expect(pillLabel("[data-your-restaurants-message]")).toBe("Restaurant preference saved.");
 
     document.removeEventListener(RESTAURANT_SELECTED_EVENT, announced);
   });
