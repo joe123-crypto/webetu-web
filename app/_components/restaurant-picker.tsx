@@ -1,6 +1,6 @@
 import { RefreshCw } from "lucide-react";
 
-import { StatusNotice, StatusPill } from "@/app/_components/status-ui";
+import { StatusNotice } from "@/app/_components/status-ui";
 import { InfoHint } from "@/app/_components/info-hint";
 import { RESTAURANT_SELECTED_EVENT } from "@/src/lib/onboarding";
 
@@ -12,8 +12,6 @@ import { RESTAURANT_SELECTED_EVENT } from "@/src/lib/onboarding";
 const pickerScript = `
 (function() {
   var restaurantPanel = document.querySelector("[data-restaurant-panel]");
-  var restaurantStatus = document.querySelector("[data-restaurant-status]");
-  var restaurantMessage = document.querySelector("[data-restaurant-message]");
   var yourRestaurants = document.querySelector("[data-your-restaurants]");
   var yourRestaurantsMessage = document.querySelector("[data-your-restaurants-message]");
   var refreshButton = document.querySelector("[data-your-restaurants-refresh]");
@@ -27,10 +25,6 @@ const pickerScript = `
   function setMessage(el, message, tone) {
     el.querySelector("[data-status-label]").textContent = message || "";
     el.dataset.statusKind = tone || "info";
-  }
-  function setPill(el, label, kind) {
-    el.querySelector("[data-status-label]").textContent = label;
-    el.dataset.statusKind = kind || "info";
   }
   async function readJson(response) {
     var body = await response.json().catch(function() { return {}; });
@@ -59,8 +53,6 @@ const pickerScript = `
 
   // Save the chosen restaurant as the user's default and update the panels
   async function selectRestaurant(r) {
-    if (restaurantStatus) setPill(restaurantStatus, "Saving…", "loading");
-    if (restaurantMessage) setMessage(restaurantMessage, "", "info");
     if (yourRestaurantsMessage) setMessage(yourRestaurantsMessage, "", "info");
     try {
       await readJson(await fetch("/webetu/preferences", {
@@ -71,12 +63,10 @@ const pickerScript = `
       }));
       selectedKey = selectionKey(r);
       highlightSelection();
-      if (restaurantStatus) setPill(restaurantStatus, r.name || r.catalogId || "Selected", "complete");
-      if (restaurantMessage) setMessage(restaurantMessage, "Restaurant preference saved.", "complete");
+      if (yourRestaurantsMessage) setMessage(yourRestaurantsMessage, "Restaurant preference saved.", "complete");
       document.dispatchEvent(new CustomEvent(${JSON.stringify(RESTAURANT_SELECTED_EVENT)}));
     } catch (err) {
-      if (restaurantStatus) setPill(restaurantStatus, "Error", "error");
-      if (restaurantMessage) setMessage(restaurantMessage, err.message || "Could not save restaurant preference.", "error");
+      if (yourRestaurantsMessage) setMessage(yourRestaurantsMessage, err.message || "Could not save restaurant preference.", "error");
     }
   }
 
@@ -101,16 +91,13 @@ const pickerScript = `
     });
   }
 
-  // Reflect the saved default into the status pill and selection highlight
+  // Reflect the saved default in the selection highlight
   async function loadPreferences() {
     if (hideFallbackDefault) return;
     try {
       var prefs = await readJson(await fetch("/webetu/preferences", { method: "GET", credentials: "same-origin" }));
       if (prefs && prefs.defaultRestaurant) {
         selectedKey = selectionKey(prefs.defaultRestaurant);
-        if (selectedKey && restaurantStatus) {
-          setPill(restaurantStatus, prefs.defaultRestaurant.name || prefs.defaultRestaurant.catalogId || "Selected", "complete");
-        }
       }
     } catch (e) {}
   }
@@ -173,36 +160,17 @@ type RestaurantPickerProps = {
   hasSavedDefault?: boolean;
 };
 
-// The restaurant selection UI: the saved default ("Default Restaurant") and the
-// user's live restaurants ("Your Restaurants"), which are clicked to change the
-// default. Rendered on the meal-reservation page and during onboarding.
+// Shared restaurant selection list for the meal-reservation page and onboarding.
 export function RestaurantPicker({ requireExplicitChoice = false, hasSavedDefault = false }: RestaurantPickerProps) {
   return (
     <>
-      {/* Default restaurant panel: display only */}
       <section
         className="panel panel-narrow"
-        aria-labelledby="restaurant-title"
+        aria-labelledby="your-restaurants-title"
         data-restaurant-panel
         data-require-choice={requireExplicitChoice ? "true" : undefined}
         data-has-saved-default={hasSavedDefault ? "true" : undefined}
       >
-        <div className="panel-head">
-          <div>
-            <h2 id="restaurant-title" className="panel-title">
-              Default Restaurant
-              <InfoHint label="Default Restaurant">
-                The restaurant used for your daily meal reservations. Pick one under Your Restaurants to change it.
-              </InfoHint>
-            </h2>
-          </div>
-          <StatusPill data-restaurant-status kind="pending">Not set</StatusPill>
-        </div>
-        <StatusNotice data-restaurant-message />
-      </section>
-
-      {/* Your restaurants panel */}
-      <section className="panel panel-narrow" aria-labelledby="your-restaurants-title">
         <div className="panel-head">
           <div>
             <h2 id="your-restaurants-title" className="panel-title">
