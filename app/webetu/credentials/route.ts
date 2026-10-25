@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     // Then verify the credentials actually work against Webetu before saving, so a
     // user cannot store a non-existent account or wrong password. Runs on every
-    // insert and update (this route backs both onboarding and settings).
+    // insert and update (this route backs both onboarding and the vault).
     const verdict = classifyVerifyResponse(await verifyWithWorker(decoded.uid, creds));
     if (verdict === "invalid") {
       throw httpError(422, "No such user is found.");

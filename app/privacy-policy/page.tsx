@@ -28,7 +28,7 @@ export default function PrivacyPolicyPage() {
           <ul>
             <li>Your Webetu username and password are used only to make meal reservations.</li>
             <li>They are encrypted and never sold or shared.</li>
-            <li>You can remove them anytime in Settings.</li>
+            <li>You can remove them anytime in Vault.</li>
           </ul>
         </section>
 
@@ -53,7 +53,7 @@ export default function PrivacyPolicyPage() {
             <li>They are encrypted (AES-256-GCM) and never stored in plain text.</li>
             <li>They are never sold, shared, or used for advertising.</li>
             <li>Only our reservation system uses them, and only to make your reservations.</li>
-            <li>You can revoke them anytime in Settings. Once revoked, they are no longer used.</li>
+            <li>You can revoke them anytime in Vault. Once revoked, they are no longer used.</li>
           </ul>
         </section>
 
@@ -78,7 +78,7 @@ export default function PrivacyPolicyPage() {
         <section className="policy-card">
           <h2>Your choices</h2>
           <ul>
-            <li>Disconnect your Webetu credentials anytime in Settings.</li>
+            <li>Disconnect your Webetu credentials anytime in Vault.</li>
             <li>Turn off reservation emails in your settings.</li>
             <li>Contact us to remove your account or data.</li>
           </ul>

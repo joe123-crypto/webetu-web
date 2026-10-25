@@ -21,12 +21,12 @@ describe("OnboardingGuide", () => {
     const current = screen.getByText("Restaurants", { selector: ".onboarding-guide-step-label" }).closest("li");
     expect(current).toHaveClass("is-current");
     expect(current).toHaveAttribute("aria-current", "step");
-    expect(screen.getByText("Settings", { selector: ".onboarding-guide-step-label" }).closest("li")).toHaveClass("is-done");
+    expect(screen.getByText("Vault", { selector: ".onboarding-guide-step-label" }).closest("li")).toHaveClass("is-done");
     expect(screen.queryByText("Overview", { selector: ".onboarding-guide-step-label" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Restaurants" })).toBeInTheDocument();
   });
 
-  it("blocks Next on settings until credentials are saved", () => {
+  it("blocks Next on vault until credentials are saved", () => {
     render(<OnboardingGuide step={1} publicUserId="abc123" ready={false} />);
 
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
