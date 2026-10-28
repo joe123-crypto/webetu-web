@@ -160,6 +160,7 @@ export async function sendReservationResultEmail({
     }
 
     const userRecord = await getFirebaseAdminAuth().getUser(userId);
+    if (userRecord.disabled) return;
     const email = userRecord.email;
     if (!email) {
       console.log(`[email] User ${userId} has no email address — skipping.`);

@@ -15,7 +15,7 @@ export default function PrivacyPolicyPage() {
 
         <section className="policy-card">
           <h1>Privacy &amp; Policy</h1>
-          <p className="policy-updated">Last updated: September 29, 2026</p>
+          <p className="policy-updated">Last updated: October 28, 2026</p>
           <p>
             AWRS (Automatic Webetu Reservation System), a Genaie product,
             automates your student meal reservations on the Webetu platform.
@@ -80,7 +80,7 @@ export default function PrivacyPolicyPage() {
           <ul>
             <li>Disconnect your Webetu credentials anytime in Vault.</li>
             <li>Turn off reservation emails in your settings.</li>
-            <li>Contact us to remove your account or data.</li>
+            <li>Permanently remove your Webetu web account, stored application data, and Firebase sign-in account using Remove Account in Settings.</li>
           </ul>
         </section>
 

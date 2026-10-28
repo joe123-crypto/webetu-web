@@ -3,16 +3,18 @@ import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME } from "@/src/config";
 import { verifyFirebaseSessionCookie } from "@/src/security/session";
-import { isOnboardingRequired } from "@/src/domains/users";
 import { validatePublicUserId } from "@/src/lib/utils";
 import { DashboardShell } from "@/app/_components/dashboard-shell";
+import { getFirebaseAdminAuth } from "@/src/firebase/admin";
+import { accountRemovalPending } from "@/src/domains/account-removal";
+import { RemoveAccount } from "@/app/_components/remove-account";
 import { EmailNotificationToggle } from "@/app/_components/email-notification-toggle";
 
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
   title: "AWRS | Settings",
-  description: "Manage your email notification preferences.",
+  description: "Manage your email preferences and account.",
 };
 
 export default async function SettingsPage({
@@ -35,12 +37,19 @@ export default async function SettingsPage({
   if (!sessionCookie) redirect(`/login?next=${encodeURIComponent(settingsPath)}`);
 
   const verified = await verifyFirebaseSessionCookie(sessionCookie).catch(() => null);
+  // A disabled/deleted identity may only see the deletion retry control. Keep
+  // normal dashboard access on the revocation-checked session path above.
+  const recovery = verified ?? await getFirebaseAdminAuth().verifySessionCookie(sessionCookie, false).catch(() => null);
+  if (!recovery) redirect(`/login?next=${encodeURIComponent(settingsPath)}`);
+  const pending = await accountRemovalPending(recovery.uid);
+  if (pending) return (
+    <main className="app-main"><h1>Finish account removal</h1><RemoveAccount pending /></main>
+  );
   if (!verified) redirect(`/login?next=${encodeURIComponent(settingsPath)}`);
 
-  const uid = verified.uid;
   const userLabel = verified.name ?? verified.email ?? "Account";
 
-  if (await isOnboardingRequired(uid).catch(() => false)) redirect(`/${publicUserId}/onboarding`);
+  // Account removal must remain available before onboarding is completed.
 
   return (
     <DashboardShell active="settings" publicUserId={publicUserId} userLabel={userLabel}>
@@ -49,6 +58,7 @@ export default async function SettingsPage({
       </div>
 
       <EmailNotificationToggle />
+      <RemoveAccount />
     </DashboardShell>
   );
 }

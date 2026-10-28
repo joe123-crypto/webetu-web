@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "@/src/domains/account-state";
 import { FieldValue } from "firebase-admin/firestore";
 import { getFirestoreDb } from "@/src/firebase/admin";
 import { httpError, validateFirebaseUid } from "@/src/lib/utils";
@@ -191,24 +192,27 @@ export async function upsertDashboardTaskStatus(body: Record<string, unknown>) {
   // often absent, so we don't require it. De-dup against the stored snapshot so a
   // worker re-posting identical status (heartbeat/config update) doesn't add a
   // duplicate history entry.
-  const existing = (await docRef.get()).data();
-  const isNewRun =
-    lastRunStatus != null &&
-    (dateToIso(existing?.lastRunAt) !== (lastRunAt ? lastRunAt.toISOString() : null) ||
-      (existing?.lastRunStatus ?? null) !== lastRunStatus ||
-      (existing?.lastRunSummary ?? null) !== lastRunSummary);
+  await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, userId);
+    const existing = (await t.get(docRef)).data();
+    const isNewRun =
+      lastRunStatus != null &&
+      (dateToIso(existing?.lastRunAt) !== (lastRunAt ? lastRunAt.toISOString() : null) ||
+        (existing?.lastRunStatus ?? null) !== lastRunStatus ||
+        (existing?.lastRunSummary ?? null) !== lastRunSummary);
 
-  await docRef.set(payload, { merge: true });
+    t.set(docRef, payload, { merge: true });
 
-  if (isNewRun) {
-    await docRef.collection("runs").add({
-      status: lastRunStatus,
-      summary: lastRunSummary,
-      results,
-      runAt: lastRunAt, // may be null
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  }
+    if (isNewRun) {
+      t.set(docRef.collection("runs").doc(), {
+        status: lastRunStatus,
+        summary: lastRunSummary,
+        results,
+        runAt: lastRunAt, // may be null
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
 
   return { ok: true as const, userId, taskId, results };
 }

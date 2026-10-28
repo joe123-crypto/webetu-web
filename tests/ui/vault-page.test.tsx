@@ -5,8 +5,10 @@ import SettingsPage from "@/app/[publicUserId]/settings/page";
 import { DashboardNavMenu } from "@/app/_components/dashboard-nav-menu";
 
 const mocks = vi.hoisted(() => ({
-  cookie: vi.fn(), verify: vi.fn(), onboarding: vi.fn(), status: vi.fn(), username: vi.fn(),
+  pending: vi.fn(), rawVerify: vi.fn(), cookie: vi.fn(), verify: vi.fn(), onboarding: vi.fn(), status: vi.fn(), username: vi.fn(),
 }));
+vi.mock("@/src/domains/account-removal", () => ({ accountRemovalPending: mocks.pending }));
+vi.mock("@/src/firebase/admin", () => ({ getFirebaseAdminAuth: () => ({ verifySessionCookie: mocks.rawVerify }) }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: mocks.cookie }) }));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => { throw new Error(`redirect:${path}`); },
@@ -26,6 +28,10 @@ const params = () => Promise.resolve({ publicUserId });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  HTMLDialogElement.prototype.showModal = vi.fn();
+  HTMLDialogElement.prototype.close = vi.fn();
+  mocks.pending.mockResolvedValue(false);
+  mocks.rawVerify.mockResolvedValue(null);
   mocks.cookie.mockReturnValue({ value: "session" });
   mocks.verify.mockResolvedValue({ uid: "authenticated-user", name: "Student" });
   mocks.onboarding.mockResolvedValue(false);
@@ -54,12 +60,32 @@ describe("Vault page split", () => {
     expect(mocks.username).toHaveBeenCalledWith("authenticated-user");
   });
 
-  it("keeps Settings limited to email preferences without reading credentials", async () => {
+  it("places account removal directly below the email toggle without reading credentials", async () => {
     render(await SettingsPage({ params: params() }));
     expect(screen.getByRole("switch", { name: "Email notification" })).toBeInTheDocument();
+    const remove = screen.getByRole("button", { name: "Remove Account" });
+    expect(screen.getByRole("switch", { name: "Email notification" }).compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByLabelText("Webetu username")).not.toBeInTheDocument();
     expect(mocks.status).not.toHaveBeenCalled();
     expect(mocks.username).not.toHaveBeenCalled();
+  });
+
+  it("allows account removal before onboarding without requiring saved credentials", async () => {
+    mocks.onboarding.mockResolvedValue(true);
+    render(await SettingsPage({ params: params() }));
+    expect(screen.getByRole("button", { name: "Remove Account" })).toBeInTheDocument();
+    expect(mocks.status).not.toHaveBeenCalled();
+    expect(mocks.username).not.toHaveBeenCalled();
+  });
+
+  it("shows only the removal retry control for a disabled identity with pending deletion", async () => {
+    mocks.verify.mockRejectedValue(new Error("disabled"));
+    mocks.rawVerify.mockResolvedValue({ uid: "authenticated-user" });
+    mocks.pending.mockResolvedValue(true);
+    render(await SettingsPage({ params: params() }));
+    expect(screen.getByRole("heading", { name: "Finish account removal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry Account Removal" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 
   it.each(["missing", "invalid"])("redirects a %s session to login with the Vault return path", async (session) => {

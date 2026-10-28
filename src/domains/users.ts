@@ -1,6 +1,7 @@
+import { assertAccountWritable } from "@/src/domains/account-state";
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
-import { getFirestoreDb } from "@/src/firebase/admin";
-import { generatePublicUserId, isPublicUserId, validateFirebaseUid } from "@/src/lib/utils";
+import { getFirebaseAdminAuth, getFirestoreDb } from "@/src/firebase/admin";
+import { generatePublicUserId, httpError, isPublicUserId, validateFirebaseUid } from "@/src/lib/utils";
 import type { OnboardingProgress } from "@/src/lib/onboarding";
 import { getWebetuCredentialStatus, hasSavedWebetuDefaultRestaurant } from "@/src/domains/webetu";
 
@@ -40,6 +41,7 @@ export async function getOrCreateUserAccount(uidInput: string): Promise<UserAcco
   return db.runTransaction(async (t) => {
     const snap = await t.get(userRef);
     const data = snap.exists ? snap.data() : undefined;
+    if (data?.deletionRequested === true) throw httpError(409, "Account removal is in progress. Return to Settings to retry removal.");
     const existing = data?.publicUserId as unknown;
     if (isPublicUserId(existing)) {
       return {
@@ -58,6 +60,9 @@ export async function getOrCreateUserAccount(uidInput: string): Promise<UserAcco
       return { publicUserId, isNewUser: false, onboardingRequired: onboardingRequiredFromData(data) };
     }
 
+    // A sign-in already in flight must not recreate a just-deleted account.
+    const identity = await getFirebaseAdminAuth().getUser(uid);
+    if (identity.disabled) throw httpError(409, "Account unavailable.");
     t.set(userRef, {
       publicUserId,
       services: { ...DEFAULT_SERVICES },
@@ -90,11 +95,11 @@ export async function getOnboardingProgress(uid: string): Promise<OnboardingProg
 export async function markOnboardingCompleted(uidInput: string): Promise<void> {
   const uid = validateFirebaseUid(uidInput);
   const db = getFirestoreDb();
-  await db.collection("users").doc(uid).set(
-    {
+  await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, uid);
+    t.set(db.collection("users").doc(uid), {
       onboardingCompleted: true,
       updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+    }, { merge: true });
+  });
 }
