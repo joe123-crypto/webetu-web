@@ -109,6 +109,9 @@ export function buildResultHtml(
   results?: DashboardRunResult[],
 ) {
   const label = (lastRunStatus && statusLabels[lastRunStatus]) ?? lastRunStatus ?? "Unknown";
+  const siteUrl = config.publicBaseUrl;
+  const invitation = `Get your meals reserved automatically with ${PRODUCT_NAME}! Sign up here: ${siteUrl}`;
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(invitation)}`;
   // Prefer the structured per-date breakdown; fall back to the plain summary
   // line only when no per-date results were sent — never fabricate detail.
   const detail =
@@ -128,6 +131,9 @@ export function buildResultHtml(
     <p style="margin:0 0 8px;"><strong>Status:</strong> ${label}</p>
     ${detail}
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
+    <p style="margin:0 0 16px;font-size:14px;color:#374151;">Don’t forget to share ${escapeHtml(PRODUCT_NAME)} with your friends so they can get their meals reserved automatically too!</p>
+    <a href="${escapeHtmlAttribute(whatsappUrl)}" style="display:inline-block;background:#15803d;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:600;">Share on WhatsApp</a>
+    <p style="margin:12px 0 20px;font-size:14px;color:#374151;">Or share the site: <a href="${escapeHtmlAttribute(siteUrl)}" style="color:#1d4ed8;">${escapeHtml(siteUrl)}</a></p>
     <p style="font-size:12px;color:#9ca3af;">This is an automated notification from ${PRODUCT_NAME}.</p>
   </div>
 </body>
