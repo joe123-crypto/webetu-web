@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildResultHtml } from "@/src/lib/email";
 import { normalizeRunResults } from "@/src/domains/dashboard";
+import { config } from "@/src/config";
 
 describe("buildResultHtml", () => {
   const results = [
@@ -8,6 +9,37 @@ describe("buildResultHtml", () => {
     { date: "2026-07-02", status: "success", mealsBooked: 3, mealsTotal: 3, restaurant: "Résidence Attar" },
     { date: "2026-07-03", status: "failed", mealsBooked: 0, mealsTotal: 3, restaurant: "" },
   ];
+
+  it.each(["success", "partial", "failed"])("includes sharing links for %s runs with either result format", (status) => {
+    for (const breakdown of [results, []]) {
+      const doc = new DOMParser().parseFromString(buildResultHtml(status, "Run completed", breakdown), "text/html");
+      const share = Array.from(doc.querySelectorAll("a")).find((link) => link.textContent === "Share on WhatsApp");
+      const url = new URL(share!.href);
+      expect(url.origin + url.pathname).toBe("https://wa.me/");
+      expect(url.searchParams.get("text")).toBe(`Get your meals reserved automatically with AWRS! Sign up here: ${config.publicBaseUrl}`);
+      expect(doc.body.textContent).toContain("Don’t forget to share AWRS with your friends");
+      expect(Array.from(doc.querySelectorAll("a")).some((link) => link.getAttribute("href") === config.publicBaseUrl && link.textContent === config.publicBaseUrl)).toBe(true);
+    }
+  });
+
+  it("preserves special characters in the shared URL without injecting HTML", () => {
+    const originalUrl = config.publicBaseUrl;
+    const siteUrl = 'https://example.com/?invite=friends&message="meals"<today>#join';
+    try {
+      config.publicBaseUrl = siteUrl;
+      const doc = new DOMParser().parseFromString(buildResultHtml("success", null), "text/html");
+      const links = Array.from(doc.querySelectorAll("a"));
+      expect(links).toHaveLength(2);
+      expect(new URL(links[0].href).searchParams.get("text")).toBe(
+        `Get your meals reserved automatically with AWRS! Sign up here: ${siteUrl}`,
+      );
+      expect(links[1].getAttribute("href")).toBe(siteUrl);
+      expect(links[1].textContent).toBe(siteUrl);
+      expect(doc.querySelector("today")).toBeNull();
+    } finally {
+      config.publicBaseUrl = originalUrl;
+    }
+  });
 
   it("renders a per-date breakdown when results are present", () => {
     const html = buildResultHtml("partial", "2 of 3 confirmed", results);
