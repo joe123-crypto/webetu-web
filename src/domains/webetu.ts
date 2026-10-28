@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "@/src/domains/account-state";
 import { FieldValue } from "firebase-admin/firestore";
 import { getFirestoreDb } from "@/src/firebase/admin";
 import {
@@ -27,6 +28,8 @@ import { encryptCentralSecret, decryptCentralSecret } from "@/src/security/crypt
 export async function getWebetuCredentialStatus(uid: string) {
   const safeUid = validateFirebaseUid(uid);
   const db = getFirestoreDb();
+  const user = await db.collection("users").doc(safeUid).get();
+  if (!user.exists || user.data()?.deletionRequested === true) throw httpError(409, "Account unavailable.");
   const refId = webetuCredentialRefId(safeUid);
   const doc = await db.collection("credentialRefs").doc(refId).get();
   if (!doc.exists) {
@@ -52,6 +55,8 @@ export async function getWebetuCredentialStatus(uid: string) {
 export async function getWebetuUsername(uid: string): Promise<string | null> {
   const safeUid = validateFirebaseUid(uid);
   const db = getFirestoreDb();
+  const user = await db.collection("users").doc(safeUid).get();
+  if (!user.exists || user.data()?.deletionRequested === true) throw httpError(409, "Account unavailable.");
   const refId = webetuCredentialRefId(safeUid);
   const doc = await db.collection("credentialRefs").doc(refId).get();
   if (!doc.exists) return null;
@@ -85,6 +90,7 @@ export async function consumeWebetuVerifyAttempt(uid: string, username: string):
   const now = Date.now();
 
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(ref);
     const targetDoc = await t.get(targetRef);
     const data = doc.data() || {};
@@ -152,6 +158,7 @@ export async function refundWebetuVerifyAttempt(uid: string, username: string): 
   const ref = db.collection("webetuVerifyAttempts").doc(safeUid);
   const targetRef = db.collection("webetuVerifyTargets").doc(webetuVerifyTargetKey(username));
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(ref);
     const targetDoc = await t.get(targetRef);
     if (doc.exists) {
@@ -179,6 +186,7 @@ export async function claimWebetuManualRun(uid: string): Promise<void> {
   const ref = db.collection("webetuManualRuns").doc(safeUid);
   const now = Date.now();
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(ref);
     const decision = webetuManualRunDecision({
       now,
@@ -215,6 +223,7 @@ export async function saveWebetuCredentials(uid: string, body: any) {
   // restaurant lookup re-discover.
   const metadataRef = db.collection("webetuMetadata").doc(safeUid);
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(centralRef);
     t.delete(metadataRef);
     t.set(credsRef, {
@@ -258,6 +267,7 @@ export async function revokeWebetuCredentials(uid: string) {
   // for whichever account is connected next.
   const metadataRef = db.collection("webetuMetadata").doc(safeUid);
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(credsRef);
     const userDoc = await t.get(centralRef);
     t.delete(metadataRef);
@@ -337,6 +347,7 @@ export async function saveWebetuMetadataForUid(
   const db = getFirestoreDb();
   const ref = db.collection("webetuMetadata").doc(safeUid);
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(ref);
     t.set(
       ref,
@@ -367,6 +378,7 @@ export async function setWebetuDefaultRestaurantForUid(uid: string, restaurantIn
   const db = getFirestoreDb();
   const prefRef = db.collection("webetuPreferences").doc(safeUid);
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(prefRef);
     if (doc.exists) {
       t.update(prefRef, {
@@ -403,6 +415,7 @@ export async function setWebetuAutoReservationForUid(
   const db = getFirestoreDb();
   const prefRef = db.collection("webetuPreferences").doc(safeUid);
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(prefRef);
     if (doc.exists) {
       t.update(prefRef, {
@@ -441,6 +454,7 @@ export async function setWebetuEmailNotificationForUid(
   const db = getFirestoreDb();
   const prefRef = db.collection("webetuPreferences").doc(safeUid);
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(prefRef);
     if (doc.exists) {
       t.update(prefRef, {
@@ -474,6 +488,8 @@ export async function listWebetuReservationRoster() {
     snap.docs.map(async (doc) => {
       const userId = doc.data()?.userId as string | undefined;
       if (!userId) return null;
+      const user = await db.collection("users").doc(userId).get();
+      if (!user.exists || user.data()?.deletionRequested === true) return null;
       const prefDoc = await db.collection("webetuPreferences").doc(userId).get();
       const prefData = prefDoc.data();
       const restaurant =
@@ -502,6 +518,7 @@ export async function setWebetuRestaurantOverrideForUid(uid: string, body: any) 
     .collection("webetuOverrides")
     .doc(webetuRestaurantOverrideId(safeUid, date));
   await db.runTransaction(async (t) => {
+    await assertAccountWritable(db, t, safeUid);
     const doc = await t.get(prefRef);
     if (action === "skip") {
       t.set(overrideRef, {
